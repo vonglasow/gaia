@@ -1,0 +1,50 @@
+name: CI
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [ '1.22' ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+      - uses: golangci/golangci-lint-action@v3
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [ '1.22' ]
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+      - run: go test -v .
+  release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [ '1.22' ]
+    needs: test
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+      - uses: go-semantic-release/action@v1
+        with:
+          hooks: goreleaser
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
