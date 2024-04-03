@@ -41,6 +41,8 @@ const (
 		"Provide short responses in about 100 words, unless you are specifically asked for more details." +
 		"If you need to store any data, assume it will be stored in the conversation." +
 		"APPLY MARKDOWN formatting when possible."
+
+	ollamaChatURL = "/api/chat"
 )
 
 var (
@@ -63,6 +65,13 @@ type Config struct {
 
 type Message struct {
 	Content string `json:"content"`
+	Role    string `json:"role"`
+}
+
+type APIRequest struct {
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+	Stream   bool      `json:"stream"`
 }
 
 type APIResponse struct {
@@ -217,19 +226,19 @@ func processMessage(msg string, config Config, role string) {
 }
 
 func callAPI(config Config, method, contentType string, body string, role string) error {
-	request := map[string]interface{}{
-		"model": config.OLLAMA_MODEL,
-		"messages": []map[string]interface{}{
+	request := APIRequest{
+		Model: config.OLLAMA_MODEL,
+		Messages: []Message{
 			{
-				"role":    "system",
-				"content": role,
+				Role:    "system",
+				Content: role,
 			},
 			{
-				"role":    "user",
-				"content": body,
+				Role:    "user",
+				Content: body,
 			},
 		},
-		"stream": true,
+		Stream: true,
 	}
 
 	requestBody, err := json.Marshal(request)
@@ -238,7 +247,7 @@ func callAPI(config Config, method, contentType string, body string, role string
 		return fmt.Errorf("failed to marshal JSON request: %v", err)
 	}
 
-	resp, err := http.Post(config.OLLAMA_BASE_URL+"/api/chat", contentType, bytes.NewBuffer(requestBody))
+	resp, err := http.Post(config.OLLAMA_BASE_URL+ollamaChatURL, contentType, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return fmt.Errorf("failed to make HTTP request: %v", err)
 	}
@@ -263,15 +272,34 @@ func displayConfig() {
 func processStreamedResponse(body io.Reader) {
 	decoder := json.NewDecoder(body)
 
-	for {
+	fmt.Println()
+
+	respChan := make(chan string)
+	eofChan := make(chan struct{})
+	errorChan := make(chan error)
+	go func() {
 		var apiResp APIResponse
-		if err := decoder.Decode(&apiResp); err == io.EOF {
-			break
-		} else if err != nil {
-			fmt.Println("Error decoding JSON:", err)
-			break
+		for {
+			if err := decoder.Decode(&apiResp); err == io.EOF {
+				eofChan <- struct{}{}
+			} else if err != nil {
+				errorChan <- err
+			} else {
+				respChan <- apiResp.Message.Content
+			}
 		}
-		fmt.Print(apiResp.Message.Content)
+	}()
+
+	for {
+		select {
+		case resp := <-respChan:
+			fmt.Print(resp)
+		case err := <-errorChan:
+			fmt.Println("Error decoding JSON:", err)
+			return
+		case <-eofChan:
+			fmt.Println()
+			return
+		}
 	}
-	fmt.Print("\n")
 }
