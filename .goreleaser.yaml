@@ -17,3 +17,15 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commitSHA={{.FullCommit}}
       - -X main.buildDate={{.Date}}
+brews:
+  - name: "gaia"
+    homepage: "https://github.com/vonglasow/gaia"
+    description: "Cli tool to ask local LLM with ollama"
+    license: "GPL3"
+    url_template: "https://github.com/vonglasow/{{ .ProjectName }}/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    folder: Formula
+    repository:
+      owner: vonglasow
+      name: homebrew-tap
+      branch: main
