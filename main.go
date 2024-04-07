@@ -54,8 +54,8 @@ var (
 	createConfig bool
 	versionFlag  bool
 	version      string = "dev"
-	commit       string = "none"
-	date         string = "unknown"
+	commitSHA    string = "none"
+	buildDate    string = "unknown"
 )
 
 type Config struct {
@@ -146,7 +146,7 @@ func main() {
 		Short: "gaia is a CLI tool",
 		Run: func(cmd *cobra.Command, args []string) {
 			if versionFlag {
-				fmt.Printf("Gaia %s, commit %s, built at %s", version, commit, date)
+				fmt.Printf("Gaia %s, commit %s, built at %s", version, commitSHA, buildDate)
 				os.Exit(0)
 			}
 
