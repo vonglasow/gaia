@@ -1,5 +1,14 @@
 # gaia
 
+## Installation
+
+```sh
+brew tap vonglasow/tap
+brew install gaia
+# or
+brew install vonglasow/tap/gaia
+```
+
 ## Usage
 
 ```sh
