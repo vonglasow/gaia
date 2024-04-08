@@ -146,7 +146,7 @@ func main() {
 		Short: "gaia is a CLI tool",
 		Run: func(cmd *cobra.Command, args []string) {
 			if versionFlag {
-				fmt.Printf("Gaia %s, commit %s, built at %s", version, commitSHA, buildDate)
+				fmt.Printf("Gaia %s, commit %s, built at %s\n", version, commitSHA, buildDate)
 				os.Exit(0)
 			}
 
