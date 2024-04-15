@@ -14,9 +14,9 @@ builds:
     ldflags:
       - -extldflags '-static'
       - -s -w
-      - -X main.version={{.Version}}
-      - -X main.commitSHA={{.FullCommit}}
-      - -X main.buildDate={{.Date}}
+      - -X gaia/commands.version={{.Version}}
+      - -X gaia/commands.commitSHA={{.FullCommit}}
+      - -X gaia/commands.buildDate={{.Date}}
 brews:
   - name: "gaia"
     homepage: "https://github.com/vonglasow/gaia"
