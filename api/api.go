@@ -5,108 +5,224 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
-	"os"
-	"runtime"
 	"strings"
+	"sync"
 
+	"github.com/charmbracelet/bubbles/progress"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/viper"
 )
 
-func roundFloat(val float64, precision uint) float64 {
-	ratio := math.Pow(10, float64(precision))
-	return math.Round(val*ratio) / ratio
-}
+// Constants for UI styling
+const (
+	padding  = 2
+	maxWidth = 80
+)
 
+// Styling for help text
+var helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render
+
+// Message structure for API interactions
 type Message struct {
 	Content string `json:"content"`
 	Role    string `json:"role"`
 }
 
+// API request structure
 type APIRequest struct {
 	Model    string    `json:"model"`
 	Messages []Message `json:"messages"`
 	Stream   bool      `json:"stream"`
 }
 
+// API response structure
 type APIResponse struct {
 	Model    string   `json:"model"`
 	Response string   `json:"response"`
 	Message  *Message `json:"message"`
 }
 
-func processStreamedResponse(body io.Reader) {
-	decoder := json.NewDecoder(body)
-	respChan := make(chan string)
-	eofChan := make(chan struct{})
-	errorChan := make(chan error)
+// ProgressModel manages the download progress
+type ProgressModel struct {
+	progress  progress.Model
+	Total     int64
+	Completed int64
+	Done      bool
+	mutex     sync.Mutex
+}
 
-	go func() {
-		var apiResp APIResponse
-		for {
-			if err := decoder.Decode(&apiResp); err == io.EOF {
-				eofChan <- struct{}{}
-			} else if err != nil {
-				errorChan <- err
-			} else {
-				respChan <- apiResp.Message.Content
-			}
+func (m *ProgressModel) Init() tea.Cmd {
+	return nil
+}
+
+// Update the progress model with new data
+func (m *ProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case string:
+		if msg == "done" {
+			m.Done = true
+			return m, tea.Quit
 		}
-	}()
+	case tea.KeyMsg:
+		if msg.String() == "q" {
+			return m, tea.Quit
+		}
+	case struct {
+		completed int64
+		total     int64
+	}:
+		m.mutex.Lock()
+		m.Completed = msg.completed
+		m.Total = msg.total
+		m.mutex.Unlock()
+		m.progress.SetPercent(float64(m.Completed) / float64(m.Total))
+	}
+
+	return m, nil
+}
+
+// View function to render the progress bar
+func (m *ProgressModel) View() string {
+	if m.Done {
+		return "\nDownload completed! Proceeding...\n"
+	}
+
+	progressPercent := float64(0)
+	if m.Total != 0 {
+		progressPercent = float64(m.Completed) / float64(m.Total)
+	}
+
+	pad := strings.Repeat(" ", padding)
+	return "\n" +
+		pad + m.progress.ViewAs(progressPercent) + "\n\n" +
+		pad + helpStyle("Press 'q' to cancel")
+}
+
+// Process the streamed response from the API
+func processStreamedResponse(body io.ReadCloser) {
+	defer body.Close()
+	decoder := json.NewDecoder(body)
 
 	for {
-		select {
-		case resp := <-respChan:
-			fmt.Print(resp)
-		case err := <-errorChan:
+		var apiResp APIResponse
+		if err := decoder.Decode(&apiResp); err != nil {
+			if err == io.EOF {
+				fmt.Println()
+				return
+			}
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				return
+			}
 			fmt.Println("Error decoding JSON:", err)
 			return
-		case <-eofChan:
-			fmt.Println()
-			return
+		}
+
+		if apiResp.Message != nil {
+			fmt.Print(apiResp.Message.Content)
 		}
 	}
 }
 
+// Main function to process messages and ensure the model exists before sending
 func ProcessMessage(msg string) error {
 	if err := checkAndPullIfRequired(); err != nil {
 		return err
 	}
 
-	systemrole := "default"
+	return sendMessage(msg)
+}
 
-	if viper.IsSet("systemrole") {
-		if viper.IsSet(fmt.Sprintf("roles.%s", viper.GetString("systemrole"))) {
-			systemrole = viper.GetString("systemrole")
-		} else if viper.GetString("systemrole") == "" {
-			systemrole = "default"
-		} else {
-			fmt.Printf("Error: Role '%s' not found in the configuration", viper.GetString("systemrole"))
-			return nil
+// Function to check if the model exists and pull it if necessary
+func checkAndPullIfRequired() error {
+	url := fmt.Sprintf("http://%s:%d/api/tags", viper.GetString("host"), viper.GetInt("port"))
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to fetch tags: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var tagsResponse struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&tagsResponse); err != nil {
+		return fmt.Errorf("failed to decode tags response: %v", err)
+	}
+
+	modelExists := false
+	for _, model := range tagsResponse.Models {
+		if strings.Split(model.Name, ":")[0] == viper.GetString("model") {
+			modelExists = true
+			break
 		}
 	}
 
-	role := fmt.Sprintf(viper.GetString(fmt.Sprintf("roles.%s", systemrole)), os.Getenv("SHELL"), runtime.GOOS)
+	if !modelExists {
+		fmt.Printf("Model %s not found, pulling...\n", viper.GetString("model"))
+		return pullModel()
+	}
 
+	return nil
+}
+
+// Pull the model using a progress bar
+func pullModel() error {
+	pullURL := fmt.Sprintf("http://%s:%d/api/pull", viper.GetString("host"), viper.GetInt("port"))
+	pullData := map[string]string{"name": viper.GetString("model")}
+	pullDataBytes, _ := json.Marshal(pullData)
+
+	resp, err := http.Post(pullURL, "application/json", bytes.NewBuffer(pullDataBytes))
+	if err != nil {
+		return fmt.Errorf("failed to pull model: %v", err)
+	}
+	defer resp.Body.Close()
+
+	model := &ProgressModel{progress: progress.New(progress.WithWidth(50))}
+	p := tea.NewProgram(model)
+
+	go func() {
+		decoder := json.NewDecoder(resp.Body)
+		for {
+			var pullResponse struct {
+				Completed int64 `json:"completed"`
+				Total     int64 `json:"total"`
+			}
+			if err := decoder.Decode(&pullResponse); err != nil {
+				break
+			}
+			p.Send(struct {
+				completed int64
+				total     int64
+			}{pullResponse.Completed, pullResponse.Total})
+		}
+		p.Send("done")
+	}()
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("error running progress UI: %v", err)
+	}
+
+	return nil
+}
+
+// Send a message to the API
+func sendMessage(msg string) error {
 	request := APIRequest{
 		Model: viper.GetString("model"),
 		Messages: []Message{
-			{
-				Role:    "system",
-				Content: role,
-			},
-			{
-				Role:    "user",
-				Content: msg,
-			},
+			{Role: "system", Content: "System message"},
+			{Role: "user", Content: msg},
 		},
 		Stream: true,
 	}
 
 	requestBody, err := json.Marshal(request)
 	if err != nil {
-		fmt.Println("Error during call on API")
 		return fmt.Errorf("failed to marshal JSON request: %v", err)
 	}
 
@@ -121,117 +237,4 @@ func ProcessMessage(msg string) error {
 
 	processStreamedResponse(resp.Body)
 	return nil
-}
-
-type Model struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-}
-
-type TagsResponse struct {
-	Models []Model `json:"models"`
-}
-
-type pulling struct {
-	Status    string `json:"status"`
-	Digest    string `json:"digest,omitempty"`
-	Total     int64  `json:"total,omitempty"`
-	Completed int64  `json:"completed,omitempty"`
-}
-
-func checkAndPullIfRequired() error {
-	url := fmt.Sprintf("http://%s:%d/api/tags", viper.GetString("host"), viper.GetInt("port"))
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("failed to fetch tags from %s: %v", url, err)
-	}
-	defer resp.Body.Close()
-
-	var tagsResponse TagsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tagsResponse); err != nil {
-		return fmt.Errorf("failed to decode tags response: %v", err)
-	}
-
-	// Check if OLLAMA_MODEL exists in the models list
-	modelExists := false
-	for _, model := range tagsResponse.Models {
-		extractedBaseModel := strings.Split(model.Name, ":")[0]
-		if extractedBaseModel == viper.GetString("model") {
-			modelExists = true
-			break
-		}
-	}
-
-	if !modelExists {
-		fmt.Printf("Model %s not found in the tags.\n", viper.GetString("model"))
-		fmt.Printf("Pulling model %s.\n", viper.GetString("model"))
-
-		pullURL := fmt.Sprintf("http://%s:%d/api/pull", viper.GetString("host"), viper.GetInt("port"))
-		pullData := map[string]string{"name": viper.GetString("model")}
-		pullDataBytes, _ := json.Marshal(pullData)
-
-		// Make POST request to initiate the pull operation
-		contentType := "application/json"
-		resp, err := http.Post(pullURL, contentType, bytes.NewBuffer(pullDataBytes))
-		if err != nil {
-			return fmt.Errorf("failed to initiate pull for model %s: %v", viper.GetString("model"), err)
-		}
-		defer resp.Body.Close()
-
-		// Check response status code
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("pull request failed with status code: %d", resp.StatusCode)
-		}
-
-		// Start processing the streamed response using channels
-		processPullStreamedResponse(resp.Body)
-	}
-
-	return nil
-}
-
-// Function to process the streamed response using channels
-func processPullStreamedResponse(body io.Reader) {
-	decoder := json.NewDecoder(body)
-	statusChan := make(chan pulling)
-	errorChan := make(chan error)
-	doneChan := make(chan struct{})
-
-	go func() {
-		for {
-			var pullResponse pulling
-			if err := decoder.Decode(&pullResponse); err == io.EOF {
-				close(doneChan)
-				return
-			} else if err != nil {
-				errorChan <- err
-				return
-			}
-			statusChan <- pullResponse
-		}
-	}()
-
-	for {
-		select {
-		case status := <-statusChan:
-			if strings.Split(status.Status, " ")[0] == "pulling" {
-				percent := float64(status.Completed) / float64(status.Total)
-				if math.IsNaN(percent) {
-					percent = 0
-				}
-				fmt.Println("Download in progress:", roundFloat(percent*100, 2))
-			}
-			if status.Status == "success" {
-				fmt.Println("Image successfully pulled.")
-				return
-			}
-		case err := <-errorChan:
-			fmt.Println("Error decoding JSON:", err)
-			return
-		case <-doneChan:
-			fmt.Println("Streamed response processing completed.")
-			return
-		}
-	}
 }
