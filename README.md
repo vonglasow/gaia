@@ -1,41 +1,97 @@
-# gaia
+# Gaia
 
-## Requirements
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/vonglasow/gaia/main.svg)](https://results.pre-commit.ci/latest/github/vonglasow/gaia/main)
 
-```sh
-brew install ollama
-ollama serve
-ollama pull openhermes2.5-mistral
-```
+Gaia is a command-line interface (CLI) tool that provides a convenient way to
+interact with language models through a local API. It features a beautiful
+terminal UI, configuration management, and support for different interaction
+modes.
+
+## Features
+
+- 🚀 Simple and intuitive command-line interface
+- 🎨 Beautiful terminal UI with progress bars
+- ⚙️ Configurable settings with YAML support
+- 🔄 Support for different interaction modes (default, describe, code, shell)
+- 📦 Automatic model management (pull if not present)
+- 🔌 Local API integration
 
 ## Installation
 
-```sh
-brew tap vonglasow/tap
-brew install gaia
-# or
-brew install vonglasow/tap/gaia
+### Prerequisites
+
+- Go 1.22.2 or later
+- A running instance of a compatible language model API (e.g., Ollama)
+
+### Building from Source
+
+```bash
+git clone https://github.com/vonglasow/gaia.git
+cd gaia
+go build
 ```
+
+## Configuration
+
+Gaia stores its configuration in `~/.config/gaia/config.yaml`. The following settings are available:
+
+- `model`: The language model to use (default: "mistral")
+- `host`: API host (default: "localhost")
+- `port`: API port (default: 11434)
+- `roles`: Different interaction modes with their respective prompts
+
+### Available Roles
+
+- `default`: General programming and system administration assistance
+- `describe`: Command description and documentation
+- `shell`: Shell command generation
+- `code`: Code generation without descriptions
 
 ## Usage
 
-```sh
-$ gaia -h
-Usage:
-  gaia [command]
+### Basic Commands
 
-Available Commands:
-  ask         Ask to a model
-  completion  Generate the autocompletion script for the specified shell
-  config      Set configuration options
-  help        Help about any command
-  version     Print the version information
+```bash
+# Ask a question
+gaia ask "What is the meaning of life?"
 
-Flags:
-  -h, --help   help for gaia
+# Configure settings
+gaia config set model llama2
+gaia config set host 127.0.0.1
+gaia config set port 8080
+
+# View current configuration
+gaia config list
+
+# Get specific configuration value
+gaia config get model
+
+# Show configuration file path
+gaia config path
+
+# Check version
+gaia version
 ```
 
-```sh
+### Using Different Roles
+
+```bash
+# Use default role (general assistance)
+gaia ask "How do I create a new directory?"
+
+# Use describe role for command documentation
+gaia ask --role describe "ls -la"
+
+# Use shell role for command generation
+gaia ask --role shell "list files in current directory"
+
+# Use code role for code generation
+gaia ask --role code "Hello world in Python"
+```
+
+### Example Usage
+
+```bash
 $ cat CVE-2021-4034.py | gaia ask "Analyze and explain this code"
 This code is a Python script that exploits the CVE-2021-4034 vulnerability in Python. It was originally written by Joe Ammond, who used it as an experiment to see if he could get it to work in Python while also playing around with ctypes.
 
@@ -47,3 +103,26 @@ An environment list is set to configure the call to `execve()`. The code also fi
 
 The code ends with calling the `execve()` function using the C library found earlier, passing in NULL arguments as required by `execve()`.
 ```
+
+## Development
+
+### Project Structure
+
+- `api/`: API interaction and streaming functionality
+- `commands/`: CLI command definitions
+- `config/`: Configuration management
+- `main.go`: Application entry point
+
+### Dependencies
+
+- [cobra](https://github.com/spf13/cobra): CLI framework
+- [viper](https://github.com/spf13/viper): Configuration management
+- [bubbletea](https://github.com/charmbracelet/bubbletea): Terminal UI framework
+
+## License
+
+This project is licensed under the terms specified in the LICENSE file.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
