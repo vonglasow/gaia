@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -92,6 +94,40 @@ var versionCmd = &cobra.Command{
 	},
 }
 
+var chatCmd = &cobra.Command{
+	Use:   "chat",
+	Short: "Start an interactive chat session",
+	Run: func(cmd *cobra.Command, args []string) {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Println("Starting chat session. Type 'exit' to end the chat.")
+		fmt.Println("----------------------------------------")
+
+		for {
+			fmt.Print("You: ")
+			input, err := reader.ReadString('\n')
+			if err != nil {
+				if err == io.EOF {
+					fmt.Println("\nChat session ended (EOF received).")
+					break
+				}
+				fmt.Println("Error reading input:", err)
+				continue
+			}
+
+			input = strings.TrimSpace(input)
+			if input == "exit" {
+				fmt.Println("Chat session ended.")
+				break
+			}
+
+			if err := api.ProcessMessage(input); err != nil {
+				fmt.Println("Error processing message:", err)
+			}
+			fmt.Println("----------------------------------------")
+		}
+	},
+}
+
 func readStdin() string {
 	var stdinLines string
 	stat, _ := os.Stdin.Stat()
@@ -110,6 +146,6 @@ func Execute() error {
 		fmt.Printf("Error binding flag to Viper: %v\n", err)
 		return err
 	}
-	rootCmd.AddCommand(configCmd, versionCmd, askCmd)
+	rootCmd.AddCommand(configCmd, versionCmd, askCmd, chatCmd)
 	return rootCmd.Execute()
 }
