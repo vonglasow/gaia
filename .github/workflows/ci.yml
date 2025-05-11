@@ -18,6 +18,7 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
       - uses: golangci/golangci-lint-action@v8
+      - uses: pre-commit-ci/lite-action@v1.1.0
   test:
     runs-on: ubuntu-latest
     strategy:
