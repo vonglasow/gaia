@@ -100,36 +100,20 @@ func (m *ProgressModel) View() string {
 		pad + helpStyle("Press 'q' to cancel")
 }
 
-// Process the streamed response from the API
-func processStreamedResponse(body io.ReadCloser) {
-	defer body.Close()
-	decoder := json.NewDecoder(body)
-
-	for {
-		var apiResp APIResponse
-		if err := decoder.Decode(&apiResp); err != nil {
-			if err == io.EOF {
-				fmt.Println()
-				return
-			}
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				return
-			}
-			fmt.Println("Error decoding JSON:", err)
-			return
-		}
-
-		if apiResp.Message != nil {
-			fmt.Print(apiResp.Message.Content)
-		}
-	}
-}
+// ChatHistory stores the conversation history
+var chatHistory []Message
 
 // Main function to process messages and ensure the model exists before sending
 func ProcessMessage(msg string) error {
 	if err := checkAndPullIfRequired(); err != nil {
 		return err
 	}
+
+	// Add user message to history
+	chatHistory = append(chatHistory, Message{
+		Role:    "user",
+		Content: msg,
+	})
 
 	return sendMessage(msg)
 }
@@ -142,7 +126,11 @@ func checkAndPullIfRequired() error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch tags: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Printf("Error closing response body: %v\n", err)
+		}
+	}()
 
 	var tagsResponse struct {
 		Models []struct {
@@ -180,7 +168,11 @@ func pullModel() error {
 	if err != nil {
 		return fmt.Errorf("failed to pull model: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Printf("Error closing response body: %v\n", err)
+		}
+	}()
 
 	model := &ProgressModel{progress: progress.New(progress.WithWidth(50))}
 	p := tea.NewProgram(model)
@@ -212,13 +204,22 @@ func pullModel() error {
 
 // Send a message to the API
 func sendMessage(msg string) error {
+	// Prepare messages with history
+	messages := make([]Message, 0)
+
+	// Add system message
+	messages = append(messages, Message{
+		Role:    "system",
+		Content: "System message",
+	})
+
+	// Add chat history
+	messages = append(messages, chatHistory...)
+
 	request := APIRequest{
-		Model: viper.GetString("model"),
-		Messages: []Message{
-			{Role: "system", Content: "System message"},
-			{Role: "user", Content: msg},
-		},
-		Stream: true,
+		Model:    viper.GetString("model"),
+		Messages: messages,
+		Stream:   true,
 	}
 
 	requestBody, err := json.Marshal(request)
@@ -233,8 +234,39 @@ func sendMessage(msg string) error {
 	if err != nil {
 		return fmt.Errorf("failed to make HTTP request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Printf("Error closing response body: %v\n", err)
+		}
+	}()
 
-	processStreamedResponse(resp.Body)
+	// Process the response and add it to history
+	var responseContent string
+	decoder := json.NewDecoder(resp.Body)
+	for {
+		var apiResp APIResponse
+		if err := decoder.Decode(&apiResp); err != nil {
+			if err == io.EOF {
+				break
+			}
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				break
+			}
+			return fmt.Errorf("error decoding JSON: %v", err)
+		}
+
+		if apiResp.Message != nil {
+			fmt.Print(apiResp.Message.Content)
+			responseContent += apiResp.Message.Content
+		}
+	}
+	fmt.Println()
+
+	// Add assistant response to history
+	chatHistory = append(chatHistory, Message{
+		Role:    "assistant",
+		Content: responseContent,
+	})
+
 	return nil
 }

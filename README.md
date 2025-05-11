@@ -55,6 +55,9 @@ Gaia stores its configuration in `~/.config/gaia/config.yaml`. The following set
 # Ask a question
 gaia ask "What is the meaning of life?"
 
+# Start an interactive chat session
+gaia chat
+
 # Configure settings
 gaia config set model llama2
 gaia config set host 127.0.0.1
@@ -87,6 +90,18 @@ gaia ask --role shell "list files in current directory"
 
 # Use code role for code generation
 gaia ask --role code "Hello world in Python"
+```
+
+### Chat Mode
+
+The chat mode provides an interactive session where you can have a continuous conversation with the model. The conversation history is maintained throughout the session, allowing the model to reference previous messages.
+
+```bash
+# Start a chat session
+gaia chat
+
+# Type your messages and press Enter
+# Type 'exit' to end the chat session
 ```
 
 ### Example Usage
