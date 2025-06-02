@@ -10,16 +10,44 @@ import (
 
 	"gaia/api"
 	"gaia/config"
+	"log"
+	"path/filepath"
+	"runtime"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	version   string = "dev"
-	commitSHA string = "none"
-	buildDate string = "unknown"
+	version            string = "dev"
+	commitSHA          string = "none"
+	buildDate          string = "unknown"
+	apiClient          *api.APIClient
+	defaultSystemMessage string
 )
+
+// InitAPIClient initializes the API client and default system message.
+// It also checks and pulls the model if necessary.
+func InitAPIClient() error {
+	host := viper.GetString("host")
+	port := viper.GetInt("port")
+	model := viper.GetString("model")
+	// Ensure port is converted to string for NewAPIClient
+	apiClient = api.NewAPIClient(host, fmt.Sprintf("%d", port), model)
+
+	defaultRoleTemplate := viper.GetString("roles.default")
+	if defaultRoleTemplate == "" {
+		return fmt.Errorf("default role template ('roles.default') not found in configuration")
+	}
+	defaultSystemMessage = fmt.Sprintf(defaultRoleTemplate, runtime.GOOS, filepath.Base(os.Getenv("SHELL")))
+
+	fmt.Println("Checking and pulling model if necessary...")
+	if err := apiClient.CheckAndPullModel(); err != nil {
+		return fmt.Errorf("failed to initialize API client and ensure model exists: %w", err)
+	}
+	fmt.Println("Model check complete.")
+	return nil
+}
 
 var rootCmd = &cobra.Command{Use: "gaia"}
 
@@ -79,8 +107,30 @@ var askCmd = &cobra.Command{
 		if len(args) > 0 {
 			msg += " " + args[0]
 		}
-		if err := api.ProcessMessage(msg); err != nil {
-			fmt.Println(err)
+		// Determine the system message
+		roleName := viper.GetString("systemrole") // e.g., "code", "shell"
+		var finalSystemMessage string
+		if roleName != "" {
+			roleConfigKey := "roles." + roleName
+			roleTemplate := viper.GetString(roleConfigKey)
+			if roleTemplate == "" {
+				fmt.Fprintf(os.Stderr, "Warning: Role '%s' not found. Using default system message.\n", roleName)
+				finalSystemMessage = defaultSystemMessage
+			} else {
+				// Apply formatting based on which role it is
+				if roleName == "shell" || roleName == "default" { // Or any other role that uses the two %s for OS and shell
+					finalSystemMessage = fmt.Sprintf(roleTemplate, runtime.GOOS, filepath.Base(os.Getenv("SHELL")))
+				} else { // For roles like 'code', 'describe' that don't (or use different templating)
+					finalSystemMessage = roleTemplate
+				}
+			}
+		} else {
+			finalSystemMessage = defaultSystemMessage
+		}
+
+		session := &api.ChatSession{}
+		if err := apiClient.ProcessMessage(session, msg, finalSystemMessage); err != nil {
+			log.Printf("Error processing message: %v\n", err)
 		}
 	},
 }
@@ -98,19 +148,25 @@ var chatCmd = &cobra.Command{
 	Use:   "chat",
 	Short: "Start an interactive chat session",
 	Run: func(cmd *cobra.Command, args []string) {
+		session := &api.ChatSession{}
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Println("Starting chat session. Type 'exit' to end the chat.")
 		fmt.Println("----------------------------------------")
+
+		// Use defaultSystemMessage for chat sessions
+		// If a specific system message for chat is desired, it can be configured and retrieved here.
+		// For now, defaultSystemMessage (which is roles.default formatted) will be used.
+		chatSystemMessage := defaultSystemMessage
 
 		for {
 			fmt.Print("You: ")
 			input, err := reader.ReadString('\n')
 			if err != nil {
 				if err == io.EOF {
-					fmt.Println("\nChat session ended (EOF received).")
+					fmt.Println("\nChat session ended (EOF received).") // This is informational, not an error
 					break
 				}
-				fmt.Println("Error reading input:", err)
+				log.Printf("Error reading input: %v\n", err)
 				continue
 			}
 
@@ -120,10 +176,15 @@ var chatCmd = &cobra.Command{
 				break
 			}
 
-			if err := api.ProcessMessage(input); err != nil {
-				fmt.Println("Error processing message:", err)
+			if input == "" { // Skip empty input
+				continue
 			}
-			fmt.Println("----------------------------------------")
+
+			if err := apiClient.ProcessMessage(session, input, chatSystemMessage); err != nil {
+				log.Printf("Error processing message: %v\n", err)
+			}
+			// No need for the extra "----------------------------------------" here,
+			// as ProcessMessage now handles printing the AI's response directly.
 		}
 	},
 }
@@ -143,7 +204,7 @@ func Execute() error {
 	configCmd.AddCommand(listCmd, setCmd, getCmd, pathCmd)
 	askCmd.Flags().StringP("role", "r", "", "Specify role code (default, describe, code)")
 	if err := viper.BindPFlag("systemrole", askCmd.Flags().Lookup("role")); err != nil {
-		fmt.Printf("Error binding flag to Viper: %v\n", err)
+		log.Printf("Error binding flag 'role' to Viper: %v\n", err)
 		return err
 	}
 	rootCmd.AddCommand(configCmd, versionCmd, askCmd, chatCmd)

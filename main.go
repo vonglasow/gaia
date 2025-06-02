@@ -1,24 +1,24 @@
 package main
 
 import (
-	"fmt"
 	"gaia/commands"
 	"gaia/config"
-	"os"
+	"log"
 )
-
-var ()
 
 func main() {
 	err := config.InitConfig()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatalf("Failed to initialize config: %v", err)
+	}
+
+	// Initialize the API client within the commands package
+	if err := commands.InitAPIClient(); err != nil {
+		log.Fatalf("Failed to initialize API client: %v", err)
 	}
 
 	err = commands.Execute()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatalf("Command execution failed: %v", err)
 	}
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -9,73 +10,70 @@ import (
 )
 
 var CfgFile string
+var knownKeys map[string]bool
 
-type Config struct{}
+func applyDefaults() {
+	viper.SetDefault("model", "mistral")
+	viper.SetDefault("host", "localhost")
+	viper.SetDefault("port", 11434)
+	viper.SetDefault("roles.default", "You are programming and system administration assistant. You are managing %s operating system with %s shell. Provide short responses in about 100 words, unless you are specifically asked for more details. If you need to store any data, assume it will be stored in the conversation. APPLY MARKDOWN formatting when possible.")
+	viper.SetDefault("roles.describe", "Provide a terse, single sentence description of the given shell command. Describe each argument and option of the command. Provide short responses in about 80 words. APPLY MARKDOWN formatting when possible.")
+	viper.SetDefault("roles.shell", "Provide only %s commands for %s without any description. If there is a lack of details, provide the most logical solution. Ensure the output is a valid shell command. If multiple steps are required, try to combine them using &&. Provide only plain text without Markdown formatting. Do not use markdown formatting such as ```.")
+	viper.SetDefault("roles.code", "Provide only code as output without any description. Provide only code in plain text format without Markdown formatting. Do not include symbols such as ``` or ```python. If there is a lack of details, provide most logical solution. You are not allowed to ask for more details. For example if the prompt is \"Hello world Python\", you should return \"print('Hello world')\".")
 
-var config Config
-
-func defaultConfig() *viper.Viper {
-	v := viper.New()
-	v.SetDefault("model", "mistral")
-	v.SetDefault("host", "localhost")
-	v.SetDefault("port", 11434)
-	v.SetDefault("roles.default", "You are programming and system administration assistant. You are managing %s operating system with %s shell. Provide short responses in about 100 words, unless you are specifically asked for more details. If you need to store any data, assume it will be stored in the conversation. APPLY MARKDOWN formatting when possible.")
-	v.SetDefault("roles.describe", "Provide a terse, single sentence description of the given shell command. Describe each argument and option of the command. Provide short responses in about 80 words. APPLY MARKDOWN formatting when possible.")
-	v.SetDefault("roles.shell", "Provide only %s commands for %s without any description. If there is a lack of details, provide the most logical solution. Ensure the output is a valid shell command. If multiple steps are required, try to combine them using &&. Provide only plain text without Markdown formatting. Do not use markdown formatting such as ```.")
-	v.SetDefault("roles.code", "Provide only code as output without any description. Provide only code in plain text format without Markdown formatting. Do not include symbols such as ``` or ```python. If there is a lack of details, provide most logical solution. You are not allowed to ask for more details. For example if the prompt is \"Hello world Python\", you should return \"print('Hello world')\".")
-
-	return v
+	// Populate knownKeys after setting all defaults
+	knownKeys = make(map[string]bool)
+	for _, key := range viper.AllKeys() { // AllKeys here will get all default keys
+		knownKeys[key] = true
+	}
 }
 
 func InitConfig() error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Println("Error getting home directory:", err)
-		return err
+		return fmt.Errorf("error getting home directory: %w", err)
 	}
 
 	configDir := filepath.Join(homeDir, ".config", "gaia")
-	err = os.MkdirAll(configDir, 0755)
-	if err != nil {
-		fmt.Println("Error creating config directory:", err)
-		return err
+	if err = os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("error creating config directory: %w", err)
 	}
 
 	CfgFile = filepath.Join(configDir, "config.yaml")
 
 	viper.SetConfigFile(CfgFile)
 	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
+	// viper.AddConfigPath(".") // Removed for clarity, CfgFile is a full path
 
-	for key, value := range defaultConfig().AllSettings() {
-		viper.SetDefault(key, value)
-	}
+	applyDefaults() // Apply defaults and populate knownKeys
 
+	configWasCreated := false
 	if err := viper.ReadInConfig(); err != nil {
-		fmt.Println("Error reading config file:", err)
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			log.Printf("Configuration file not found. Creating with default settings at: %s", CfgFile)
+			if errWrite := viper.WriteConfigAs(CfgFile); errWrite != nil {
+				return fmt.Errorf("failed to write new config file %s: %w", CfgFile, errWrite)
+			}
+			// configWasCreated = true // This variable is not used anymore
+		} else {
+			// Some other error occurred reading the config file
+			return fmt.Errorf("failed to read config file %s: %w", CfgFile, err)
+		}
 	}
-
-	if err := viper.Unmarshal(&config); err != nil {
-		fmt.Println("Error unmarshalling config:", err)
-		return err
-	}
-
-	if err := viper.WriteConfig(); err != nil {
-		fmt.Println("Error writing config file:", err)
-	}
+	// The logic for `if !configWasCreated && err != nil ...` was removed as it's covered by the error handling above.
+	// If ReadInConfig fails with anything other than ConfigFileNotFoundError, InitConfig now returns an error.
+	// If it was ConfigFileNotFoundError and WriteConfigAs failed, that's also an error return.
+	// If both succeed (or ReadInConfig succeeds), we proceed without the old informational message.
 
 	return nil
 }
 
 func SetConfigString(key, value string) {
-	if defaultConfig().IsSet(key) {
-		viper.Set(key, value)
-	} else {
-		fmt.Println("No config found for key:", key, ":", value)
-		os.Exit(1)
+	if !knownKeys[key] {
+		fmt.Printf("Warning: Setting configuration for key '%s' which does not have a default value.\n", key)
 	}
-
-	if err := viper.WriteConfig(); err != nil {
-		fmt.Println("Error writing config file:", err)
+	viper.Set(key, value)
+	if err := viper.WriteConfigAs(CfgFile); err != nil {
+		log.Printf("Error writing config file: %v\n", err)
 	}
 }
