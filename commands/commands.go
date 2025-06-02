@@ -19,10 +19,10 @@ import (
 )
 
 var (
-	version            string = "dev"
-	commitSHA          string = "none"
-	buildDate          string = "unknown"
-	apiClient          *api.APIClient
+	version              string = "dev"
+	commitSHA            string = "none"
+	buildDate            string = "unknown"
+	apiClient            *api.APIClient
 	defaultSystemMessage string
 )
 
@@ -128,7 +128,7 @@ var askCmd = &cobra.Command{
 			finalSystemMessage = defaultSystemMessage
 		}
 
-		session := &api.ChatSession{}
+		session := api.NewChatSession()
 		if err := apiClient.ProcessMessage(session, msg, finalSystemMessage); err != nil {
 			log.Printf("Error processing message: %v\n", err)
 		}
@@ -148,7 +148,7 @@ var chatCmd = &cobra.Command{
 	Use:   "chat",
 	Short: "Start an interactive chat session",
 	Run: func(cmd *cobra.Command, args []string) {
-		session := &api.ChatSession{}
+		session := api.NewChatSession()
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Println("Starting chat session. Type 'exit' to end the chat.")
 		fmt.Println("----------------------------------------")

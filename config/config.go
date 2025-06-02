@@ -16,9 +16,20 @@ func applyDefaults() {
 	viper.SetDefault("model", "mistral")
 	viper.SetDefault("host", "localhost")
 	viper.SetDefault("port", 11434)
+
+	// roles.default: Default system message.
+	// Expects two %s placeholders: 1. Operating System (e.g., "linux"), 2. Shell name (e.g., "bash").
 	viper.SetDefault("roles.default", "You are programming and system administration assistant. You are managing %s operating system with %s shell. Provide short responses in about 100 words, unless you are specifically asked for more details. If you need to store any data, assume it will be stored in the conversation. APPLY MARKDOWN formatting when possible.")
+
+	// roles.describe: Provides a description of a shell command. No placeholders expected.
 	viper.SetDefault("roles.describe", "Provide a terse, single sentence description of the given shell command. Describe each argument and option of the command. Provide short responses in about 80 words. APPLY MARKDOWN formatting when possible.")
+
+	// roles.shell: Provides shell commands.
+	// Expects two %s placeholders: 1. Operating System (e.g., "linux"), 2. Shell name (e.g., "bash").
+	// Example when formatted: "Provide only linux commands for bash without any description."
 	viper.SetDefault("roles.shell", "Provide only %s commands for %s without any description. If there is a lack of details, provide the most logical solution. Ensure the output is a valid shell command. If multiple steps are required, try to combine them using &&. Provide only plain text without Markdown formatting. Do not use markdown formatting such as ```.")
+
+	// roles.code: Provides only code output. No placeholders expected.
 	viper.SetDefault("roles.code", "Provide only code as output without any description. Provide only code in plain text format without Markdown formatting. Do not include symbols such as ``` or ```python. If there is a lack of details, provide most logical solution. You are not allowed to ask for more details. For example if the prompt is \"Hello world Python\", you should return \"print('Hello world')\".")
 
 	// Populate knownKeys after setting all defaults

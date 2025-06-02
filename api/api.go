@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/viper"
 	"os" // Added for potential use in newProgram, though not strictly needed for the hook itself
+	"time"
 )
 
 // Allow overriding tea.NewProgram for tests
@@ -41,15 +42,21 @@ type APIClient struct {
 // NewAPIClient creates a new API client
 func NewAPIClient(host, port, modelName string) *APIClient {
 	return &APIClient{
-		BaseURL:    fmt.Sprintf("http://%s:%s", host, port),
-		HTTPClient: &http.Client{},
-		ModelName:  modelName,
+		BaseURL: fmt.Sprintf("http://%s:%s", host, port), // BaseURL does not include /api
+		HTTPClient: &http.Client{
+			Timeout: 30 * time.Second, // 30-second timeout
+		},
+		ModelName: modelName,
 	}
 }
 
-// getURL constructs the full URL for a given API path
-func (c *APIClient) getURL(path string) string {
-	return c.BaseURL + path
+// getURL constructs the full URL for a given API endpoint path
+func (c *APIClient) getURL(endpointPath string) string {
+	// Ensure endpointPath starts with a "/"
+	if !strings.HasPrefix(endpointPath, "/") {
+		endpointPath = "/" + endpointPath
+	}
+	return c.BaseURL + "/api" + endpointPath // Adds /api segment
 }
 
 // doGetRequest performs a GET request and returns the response
@@ -73,6 +80,13 @@ func (c *APIClient) doPostRequest(url string, body []byte) (*http.Response, erro
 // ChatSession stores the conversation history for a session
 type ChatSession struct {
 	History []Message
+}
+
+// NewChatSession creates a new, empty chat session.
+func NewChatSession() *ChatSession {
+	return &ChatSession{
+		History: make([]Message, 0), // Initialize history slice
+	}
 }
 
 // AddMessage appends a message to the chat history
@@ -174,7 +188,7 @@ func (c *APIClient) ProcessMessage(session *ChatSession, userMessage string, sys
 
 // CheckAndPullModel checks if the model exists and pulls it if necessary
 func (c *APIClient) CheckAndPullModel() error {
-	url := c.getURL("/api/tags")
+	url := c.getURL("/tags") // Changed: path should be relative to /api
 
 	resp, err := c.doGetRequest(url)
 	if err != nil {
@@ -214,7 +228,7 @@ func (c *APIClient) CheckAndPullModel() error {
 
 // pullModel pulls the model using a progress bar
 func (c *APIClient) pullModel() error {
-	pullURL := c.getURL("/api/pull")
+	pullURL := c.getURL("/pull") // Changed: path should be relative to /api
 	pullData := map[string]string{"name": c.ModelName}
 	pullDataBytes, err := json.Marshal(pullData)
 	if err != nil {
@@ -237,7 +251,7 @@ func (c *APIClient) pullModel() error {
 	// Let's assume WithWidth is fine, if not, tests might fail and we can adjust.
 	// The critical part is `newProgram` call.
 	model := &ProgressModel{progress: progress.New(progress.WithWidth(50))} // Default from original code
-	p := newProgram(model) // Changed tea.NewProgram to newProgram
+	p := newProgram(model)                                                  // Changed tea.NewProgram to newProgram
 
 	go func() {
 		decoder := json.NewDecoder(resp.Body)
@@ -289,7 +303,7 @@ func (c *APIClient) sendMessage(session *ChatSession, systemMessage string) erro
 		return fmt.Errorf("failed to marshal JSON request: %v", err)
 	}
 
-	url := c.getURL("/api/chat")
+	url := c.getURL("/chat") // Changed: path should be relative to /api
 
 	resp, err := c.doPostRequest(url, requestBody)
 	if err != nil {

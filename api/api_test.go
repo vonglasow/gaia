@@ -55,7 +55,6 @@ func runTeaProgramWithTimeout(p *tea.Program, t *testing.T) {
 	}
 }
 
-
 func TestChatSession_AddMessage(t *testing.T) {
 	cs := NewChatSession()
 	cs.AddMessage("user", "hello")
@@ -153,7 +152,7 @@ func TestAPIClient_CheckAndPullModel_ModelNotFoundAndPull(t *testing.T) {
 	newProgram = func(model tea.Model, opts ...tea.ProgramOption) *tea.Program {
 		// Apply default options first, then test-specific ones
 		var finalOpts []tea.ProgramOption
-		finalOpts = append(finalOpts, tea.WithoutRenderer()) // Important for CI
+		finalOpts = append(finalOpts, tea.WithoutRenderer())      // Important for CI
 		finalOpts = append(finalOpts, tea.WithOutput(io.Discard)) // Suppress output
 		finalOpts = append(finalOpts, opts...)
 
@@ -162,7 +161,6 @@ func TestAPIClient_CheckAndPullModel_ModelNotFoundAndPull(t *testing.T) {
 		return prog
 	}
 	defer func() { newProgram = originalNewProgram }()
-
 
 	err = client.CheckAndPullModel()
 	if err != nil {
@@ -215,7 +213,6 @@ func TestAPIClient_ProcessMessage(t *testing.T) {
 
 	os.Stdout = rescueStdout
 	log.SetOutput(os.Stderr) // Restore default log output
-
 
 	if err != nil {
 		t.Errorf("ProcessMessage failed: %v", err)
