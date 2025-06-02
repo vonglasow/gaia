@@ -58,7 +58,6 @@ func InitConfig() error {
 
 	applyDefaults() // Apply defaults and populate knownKeys
 
-	configWasCreated := false
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			log.Printf("Configuration file not found. Creating with default settings at: %s", CfgFile)

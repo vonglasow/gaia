@@ -13,8 +13,8 @@ import (
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/spf13/viper"
-	"os" // Added for potential use in newProgram, though not strictly needed for the hook itself
+	// "github.com/spf13/viper" // Removed
+	// "os" // Removed
 	"time"
 )
 
