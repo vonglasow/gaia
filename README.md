@@ -47,6 +47,14 @@ Gaia stores its configuration in `~/.config/gaia/config.yaml`. The following set
 - `shell`: Shell command generation
 - `code`: Code generation without descriptions
 
+### Use an alternative yaml configuration file
+
+```bash
+gaia --config /path/to/custom/config.yaml ask "Hello!"
+# or
+GAIA_CONFIG=/path/to/custom/config.yaml gaia ask "Hello!"
+```
+
 ## Usage
 
 ### Basic Commands
@@ -62,6 +70,7 @@ gaia chat
 gaia config set model llama2
 gaia config set host 127.0.0.1
 gaia config set port 8080
+gaia config create
 
 # View current configuration
 gaia config list
