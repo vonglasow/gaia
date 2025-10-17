@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -11,8 +13,6 @@ import (
 var CfgFile string
 
 type Config struct{}
-
-var config Config
 
 func defaultConfig() *viper.Viper {
 	v := viper.New()
@@ -28,42 +28,43 @@ func defaultConfig() *viper.Viper {
 }
 
 func InitConfig() error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Println("Error getting home directory:", err)
-		return err
+	if CfgFile == "" {
+		if env, ok := os.LookupEnv("GAIA_CONFIG"); ok && env != "" {
+			CfgFile = env
+		} else {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			configDir := filepath.Join(homeDir, ".config", "gaia")
+			if err := os.MkdirAll(configDir, 0o755); err != nil {
+				return err
+			}
+			CfgFile = filepath.Join(configDir, "config.yaml")
+		}
 	}
-
-	configDir := filepath.Join(homeDir, ".config", "gaia")
-	err = os.MkdirAll(configDir, 0755)
-	if err != nil {
-		fmt.Println("Error creating config directory:", err)
-		return err
-	}
-
-	CfgFile = filepath.Join(configDir, "config.yaml")
-
 	viper.SetConfigFile(CfgFile)
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
-
-	for key, value := range defaultConfig().AllSettings() {
-		viper.SetDefault(key, value)
-	}
-
 	if err := viper.ReadInConfig(); err != nil {
-		fmt.Println("Error reading config file:", err)
+		var nf viper.ConfigFileNotFoundError
+		var pe *os.PathError
+		if errors.As(err, &nf) ||
+			(errors.As(err, &pe) && (errors.Is(pe, os.ErrNotExist) || errors.Is(pe, fs.ErrNotExist))) {
+			defV := defaultConfig()
+			defV.SetConfigFile(CfgFile)
+			defV.SetConfigType("yaml")
+			if werr := defV.SafeWriteConfigAs(CfgFile); werr != nil {
+				var already viper.ConfigFileAlreadyExistsError
+				if errors.As(werr, &already) || os.IsExist(werr) {
+					return nil
+				}
+				return fmt.Errorf("create default config: %w", werr)
+			}
+			return nil
+		}
+		return fmt.Errorf("read config: %w", err)
 	}
-
-	if err := viper.Unmarshal(&config); err != nil {
-		fmt.Println("Error unmarshalling config:", err)
-		return err
-	}
-
-	if err := viper.WriteConfig(); err != nil {
-		fmt.Println("Error writing config file:", err)
-	}
-
 	return nil
 }
 

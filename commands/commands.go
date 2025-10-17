@@ -21,7 +21,20 @@ var (
 	buildDate string = "unknown"
 )
 
-var rootCmd = &cobra.Command{Use: "gaia"}
+var rootCmd = &cobra.Command{
+	Use:   "gaia",
+	Short: "Gaia CLI",
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		path := cmd.CommandPath()
+		if strings.HasSuffix(path, "config create") {
+			return nil
+		}
+		if err := config.InitConfig(); err != nil {
+			return fmt.Errorf("init config: %w", err)
+		}
+		return nil
+	},
+}
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -38,6 +51,18 @@ var listCmd = &cobra.Command{
 		for _, key := range keys {
 			fmt.Printf("%s: %v\n", key, viper.Get(key))
 		}
+	},
+}
+
+var createCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create the default configuration file if it does not exist",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := config.InitConfig(); err != nil {
+			return fmt.Errorf("failed to initialize config: %w", err)
+		}
+		fmt.Printf("Configuration file ensured at: %s\n", config.CfgFile)
+		return nil
 	},
 }
 
@@ -139,8 +164,18 @@ func readStdin() string {
 	return strings.TrimSpace(stdinLines)
 }
 
+func init() {
+	rootCmd.PersistentFlags().StringVarP(
+		&config.CfgFile,
+		"config",
+		"c",
+		"",
+		"Path to an alternative YAML configuration file (or $GAIA_CONFIG)",
+	)
+}
+
 func Execute() error {
-	configCmd.AddCommand(listCmd, setCmd, getCmd, pathCmd)
+	configCmd.AddCommand(listCmd, setCmd, getCmd, pathCmd, createCmd)
 	askCmd.Flags().StringP("role", "r", "", "Specify role code (default, describe, code)")
 	if err := viper.BindPFlag("systemrole", askCmd.Flags().Lookup("role")); err != nil {
 		fmt.Printf("Error binding flag to Viper: %v\n", err)
