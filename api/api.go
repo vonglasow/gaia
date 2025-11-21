@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -204,13 +206,28 @@ func pullModel() error {
 
 // Send a message to the API
 func sendMessage(msg string) error {
+	systemRole := viper.GetString("systemrole")
+	if systemRole == "" {
+		systemRole = viper.GetString("role")
+	}
+	if systemRole == "" {
+		systemRole = "default"
+	}
+
+	roleTemplate := viper.GetString(fmt.Sprintf("roles.%s", systemRole))
+
+	systemContent := ""
+	if roleTemplate != "" {
+		systemContent = fmt.Sprintf(roleTemplate, os.Getenv("SHELL"), runtime.GOOS)
+	}
+
 	// Prepare messages with history
 	messages := make([]Message, 0)
 
 	// Add system message
 	messages = append(messages, Message{
 		Role:    "system",
-		Content: "System message",
+		Content: systemContent,
 	})
 
 	// Add chat history
