@@ -143,9 +143,6 @@ func (rt *openaiRoundTripper) handleChat(req *http.Request) (*http.Response, err
 		return nil, fmt.Errorf("marshal OpenAI payload: %w", err)
 	}
 
-	fmt.Printf("Calling OpenAI Chat Completions with model %s\n", modelName)
-	fmt.Printf("Payload: %s\n", string(payloadBytes))
-
 	openaiReq, err := http.NewRequest(
 		http.MethodPost,
 		"https://api.openai.com/v1/chat/completions",
