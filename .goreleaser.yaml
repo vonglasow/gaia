@@ -19,7 +19,7 @@ builds:
       - -X gaia/commands.commitSHA={{.FullCommit}}
       - -X gaia/commands.buildDate={{.Date}}
 brews:
-  - name: "gaia"
+  - name: "gaia@{{ .Version }}"
     homepage: "https://github.com/vonglasow/gaia"
     description: "Cli tool to ask local LLM with ollama"
     license: "GPL3"
