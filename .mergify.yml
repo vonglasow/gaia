@@ -7,3 +7,6 @@ pull_request_rules:
     actions:
       merge:
         method: rebase
+queue_rules:
+  - name: Automatic merge for Dependabot PRs
+    merge_method: rebase
