@@ -1,8 +1,11 @@
 ---
 queue_rules:
   - name: dependabot-dev-queue
+    autoqueue: true
     merge_method: rebase
     merge_conditions:
+      - check-success = lint
+      - check-success = test
       - -conflict
 
 pull_request_rules:
