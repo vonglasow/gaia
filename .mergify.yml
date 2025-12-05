@@ -1,0 +1,9 @@
+pull_request_rules:
+  - name: Automatic merge for Dependabot PRs
+    conditions:
+      - author = dependabot[bot]
+      - check-success = lint
+      - check-success = test
+    actions:
+      merge:
+        method: squash
