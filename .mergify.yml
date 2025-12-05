@@ -3,6 +3,7 @@ queue_rules:
   - name: dependabot-dev-queue
     autoqueue: true
     merge_method: rebase
+    update_method: rebase
     batch_size: 1
     merge_conditions:
       - -conflict
