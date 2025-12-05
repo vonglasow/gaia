@@ -1,11 +1,13 @@
 pull_request_rules:
-  - name: Automatic merge for Dependabot PRs
+  - name: Auto-merge Dependabot PRs to dev
     conditions:
       - author = dependabot[bot]
+      - base = dev
       - check-success = lint
       - check-success = test
+      - -conflict
+      - -draft
     actions:
-      merge:
-        method: rebase
-        queue:
-          name: auto
+      queue:
+        name: dependabot-dev-queue
+        merge_method: rebase
