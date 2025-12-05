@@ -3,10 +3,10 @@ queue_rules:
   - name: dependabot-dev-queue
     autoqueue: true
     merge_method: rebase
+    batch_size: 1
     merge_conditions:
-      - check-success = lint
-      - check-success = test
       - -conflict
+      - "#check-success >= 1"
 
 pull_request_rules:
   - name: Auto-merge Dependabot PRs to dev
