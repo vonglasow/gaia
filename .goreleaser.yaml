@@ -19,7 +19,8 @@ builds:
       - -X gaia/commands.commitSHA={{.FullCommit}}
       - -X gaia/commands.buildDate={{.Date}}
 brews:
-  - name: "gaia@{{ .Major }}.{{ .Minor }}"
+  - &brew_defaults
+    name: "gaia"
     homepage: "https://github.com/vonglasow/gaia"
     description: "Cli tool to ask local LLM with ollama"
     license: "GPL3"
@@ -30,3 +31,5 @@ brews:
       owner: vonglasow
       name: homebrew-tap
       branch: main
+  - <<: *brew_defaults
+    name: "gaia@{{ .Major }}.{{ .Minor }}"
