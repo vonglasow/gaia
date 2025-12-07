@@ -3,7 +3,7 @@
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/vonglasow/gaia/main.svg)](https://results.pre-commit.ci/latest/github/vonglasow/gaia/main)
 ![Go Version](https://img.shields.io/github/go-mod/go-version/vonglasow/gaia)
 ![License](https://img.shields.io/github/license/vonglasow/gaia)
-![Homebrew Formula](https://img.shields.io/homebrew/v/vonglasow/tap/gaia?label=homebrew)
+![Homebrew Formula](https://img.shields.io/badge/Homebrew-Install%20via%20tap-lightgrey)
 ![Powered by Ollama](https://img.shields.io/badge/Powered%20by-Ollama-3a86ff?logo=ollama&logoColor=white)
 ![100% Local AI](https://img.shields.io/badge/100%25%20Local-AI-success)
 ![Works Offline](https://img.shields.io/badge/Works-Offline-orange)
