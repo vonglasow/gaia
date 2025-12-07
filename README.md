@@ -1,6 +1,13 @@
 # Gaia
 
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/vonglasow/gaia/main.svg)](https://results.pre-commit.ci/latest/github/vonglasow/gaia/main)
+![Go Version](https://img.shields.io/github/go-mod/go-version/vonglasow/gaia)
+![License](https://img.shields.io/github/license/vonglasow/gaia)
+![Homebrew Formula](https://img.shields.io/homebrew/v/vonglasow/tap/gaia?label=homebrew)
+![Powered by Ollama](https://img.shields.io/badge/Powered%20by-Ollama-3a86ff?logo=ollama&logoColor=white)
+![100% Local AI](https://img.shields.io/badge/100%25%20Local-AI-success)
+![Works Offline](https://img.shields.io/badge/Works-Offline-orange)
+
 
 Gaia is a command-line interface (CLI) tool that provides a convenient way to
 interact with language models through a local API. It features a beautiful
@@ -29,6 +36,18 @@ modes.
 git clone https://github.com/vonglasow/gaia.git
 cd gaia
 go build
+```
+
+### Using Homebrew (recommended 🍺)
+
+```sh
+brew tap vonglasow/gaia
+brew install gaia
+```
+#### Update
+
+```sh
+brew upgrade gaia
 ```
 
 ## Configuration
@@ -150,3 +169,6 @@ This project is licensed under the terms specified in the LICENSE file.
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+Please ensure:
+- Code is formatted and linted
+- Tests are added or updated
