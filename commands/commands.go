@@ -21,7 +21,7 @@ var (
 	buildDate string = "unknown"
 )
 
-var rootCmd = &cobra.Command{
+var RootCmd = &cobra.Command{
 	Use:   "gaia",
 	Short: "Gaia CLI",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -36,12 +36,12 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-var configCmd = &cobra.Command{
+var ConfigCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Set configuration options",
 }
 
-var listCmd = &cobra.Command{
+var ListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List configuration settings",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -54,7 +54,7 @@ var listCmd = &cobra.Command{
 	},
 }
 
-var createCmd = &cobra.Command{
+var CreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create the default configuration file if it does not exist",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -66,7 +66,7 @@ var createCmd = &cobra.Command{
 	},
 }
 
-var setCmd = &cobra.Command{
+var SetCmd = &cobra.Command{
 	Use:   "set [key] [value]",
 	Short: "Set configuration setting",
 	Args:  cobra.ExactArgs(2),
@@ -76,7 +76,7 @@ var setCmd = &cobra.Command{
 	},
 }
 
-var getCmd = &cobra.Command{
+var GetCmd = &cobra.Command{
 	Use:   "get [key]",
 	Short: "Get configuration setting",
 	Args:  cobra.ExactArgs(1),
@@ -85,7 +85,7 @@ var getCmd = &cobra.Command{
 	},
 }
 
-var pathCmd = &cobra.Command{
+var PathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "Get configuration path",
 	Args:  cobra.ExactArgs(0),
@@ -94,7 +94,7 @@ var pathCmd = &cobra.Command{
 	},
 }
 
-var askCmd = &cobra.Command{
+var AskCmd = &cobra.Command{
 	Use:   "ask [string]",
 	Short: "Ask to a model",
 	Args:  cobra.MinimumNArgs(1),
@@ -110,7 +110,7 @@ var askCmd = &cobra.Command{
 	},
 }
 
-var versionCmd = &cobra.Command{
+var VersionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version information",
 	Args:  cobra.ExactArgs(0),
@@ -119,7 +119,7 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-var chatCmd = &cobra.Command{
+var ChatCmd = &cobra.Command{
 	Use:   "chat",
 	Short: "Start an interactive chat session",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -165,7 +165,7 @@ func readStdin() string {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(
+	RootCmd.PersistentFlags().StringVarP(
 		&config.CfgFile,
 		"config",
 		"c",
@@ -175,12 +175,17 @@ func init() {
 }
 
 func Execute() error {
-	configCmd.AddCommand(listCmd, setCmd, getCmd, pathCmd, createCmd)
-	askCmd.Flags().StringP("role", "r", "", "Specify role code (default, describe, code)")
-	if err := viper.BindPFlag("systemrole", askCmd.Flags().Lookup("role")); err != nil {
+	ConfigCmd.AddCommand(ListCmd, SetCmd, GetCmd, PathCmd, CreateCmd)
+	AskCmd.Flags().StringP("role", "r", "", "Specify role code (default, describe, code)")
+	if err := viper.BindPFlag("systemrole", AskCmd.Flags().Lookup("role")); err != nil {
 		fmt.Printf("Error binding flag to Viper: %v\n", err)
 		return err
 	}
-	rootCmd.AddCommand(configCmd, versionCmd, askCmd, chatCmd)
-	return rootCmd.Execute()
+	RootCmd.AddCommand(ConfigCmd, VersionCmd, AskCmd, ChatCmd)
+	return RootCmd.Execute()
+}
+
+// CallReadStdinForTest allows tests to call the unexported readStdin function
+func CallReadStdinForTest() string {
+	return readStdin()
 }
