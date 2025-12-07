@@ -204,8 +204,8 @@ func pullModel() error {
 	return nil
 }
 
-// Send a message to the API
-func sendMessage(msg string) error {
+// buildRequestPayload builds the API request payload with system and history messages
+func buildRequestPayload(userMessage string) (APIRequest, error) {
 	systemRole := viper.GetString("systemrole")
 	if systemRole == "" {
 		systemRole = viper.GetString("role")
@@ -230,13 +230,27 @@ func sendMessage(msg string) error {
 		Content: systemContent,
 	})
 
-	// Add chat history
+	// Add chat history and user message
 	messages = append(messages, chatHistory...)
+	messages = append(messages, Message{
+		Role:    "user",
+		Content: userMessage,
+	})
 
 	request := APIRequest{
 		Model:    viper.GetString("model"),
 		Messages: messages,
 		Stream:   true,
+	}
+
+	return request, nil
+}
+
+// Send a message to the API
+func sendMessage(msg string) error {
+	request, err := buildRequestPayload(msg)
+	if err != nil {
+		return err
 	}
 
 	requestBody, err := json.Marshal(request)
