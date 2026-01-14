@@ -15,6 +15,7 @@ var CfgFile string
 var validKeys = map[string]bool{
 	"model": true, "host": true, "port": true,
 	"roles.default": true, "roles.describe": true, "roles.shell": true, "roles.code": true,
+	"roles.commit": true, "roles.branch": true,
 }
 
 func setDefaults() {
@@ -25,6 +26,15 @@ func setDefaults() {
 	viper.SetDefault("roles.describe", "Provide a terse, single sentence description of the given shell command. Describe each argument and option of the command. Provide short responses in about 80 words. APPLY MARKDOWN formatting when possible.")
 	viper.SetDefault("roles.shell", "Provide only %s commands for %s without any description. If there is a lack of details, provide the most logical solution. Ensure the output is a valid shell command. If multiple steps are required, try to combine them using &&. Provide only plain text without Markdown formatting. Do not use markdown formatting such as ```.")
 	viper.SetDefault("roles.code", "Provide only code as output without any description. Provide only code in plain text format without Markdown formatting. Do not include symbols such as ``` or ```python. If there is a lack of details, provide most logical solution. You are not allowed to ask for more details. For example if the prompt is \"Hello world Python\", you should return \"print('Hello world')\".")
+	viper.SetDefault("roles.commit", "Generate a conventional commit message based on the provided git diff. The message must have multiple lines: first line is the title (type: subject format), followed by a blank line, then a detailed description on multiple lines. Title format: start with a type (feat, fix, docs, style, refactor, test, chore), followed by a colon and space, then a brief description in lowercase. The description should explain what and why, not how. Do not include markdown formatting, code blocks, or explanations. Only return the commit message itself.")
+	viper.SetDefault("roles.branch", "Generate a concise branch name based on the provided git diff or description. The branch name should be lowercase, use hyphens to separate words, and be descriptive but short (max 50 characters). Follow common patterns like: feature/description, fix/description, refactor/description. Do not include markdown formatting, code blocks, or explanations. Only return the branch name itself.")
+	// Default tool configurations
+	viper.SetDefault("tools.git.commit.context_command", "git diff --staged")
+	viper.SetDefault("tools.git.commit.role", "commit")
+	viper.SetDefault("tools.git.commit.execute_command", "git commit -F {file}")
+	viper.SetDefault("tools.git.branch.context_command", "git diff")
+	viper.SetDefault("tools.git.branch.role", "branch")
+	viper.SetDefault("tools.git.branch.execute_command", "git checkout -b {response}")
 }
 
 func InitConfig() error {

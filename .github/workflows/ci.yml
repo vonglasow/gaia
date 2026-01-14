@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
-      - run: go test -v .
+      - run: go test -v ./...
   release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

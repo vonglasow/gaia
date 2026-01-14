@@ -101,6 +101,24 @@ func (m *ProgressModel) View() string {
 // ChatHistory stores the conversation history
 var chatHistory []Message
 
+// GetChatHistory returns a copy of the current chat history
+func GetChatHistory() []Message {
+	result := make([]Message, len(chatHistory))
+	copy(result, chatHistory)
+	return result
+}
+
+// SetChatHistory sets the chat history
+func SetChatHistory(history []Message) {
+	chatHistory = make([]Message, len(history))
+	copy(chatHistory, history)
+}
+
+// ClearChatHistory clears the chat history
+func ClearChatHistory() {
+	chatHistory = []Message{}
+}
+
 // Main function to process messages and ensure the model exists before sending
 func ProcessMessage(msg string) error {
 	if strings.TrimSpace(msg) == "" {
@@ -301,4 +319,70 @@ func sendMessage(msg string) error {
 	chatHistory = append(chatHistory, Message{Role: "assistant", Content: responseContent})
 
 	return nil
+}
+
+// ProcessMessageWithResponse processes a message and returns the response without printing it
+func ProcessMessageWithResponse(msg string) (string, error) {
+	if strings.TrimSpace(msg) == "" {
+		return "", fmt.Errorf("message cannot be empty")
+	}
+	if err := checkAndPullIfRequired(); err != nil {
+		return "", err
+	}
+	return sendMessageWithResponse(msg)
+}
+
+// sendMessageWithResponse sends a message and returns the response without printing
+func sendMessageWithResponse(msg string) (string, error) {
+	request, err := buildRequestPayload(msg)
+	if err != nil {
+		return "", err
+	}
+
+	requestBody, err := json.Marshal(request)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal JSON request: %v", err)
+	}
+
+	host := viper.GetString("host")
+	port := viper.GetInt("port")
+	url := fmt.Sprintf("http://%s:%d/api/chat", host, port)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API server returned status %d: %s. The request may be invalid or the server is experiencing issues", resp.StatusCode, resp.Status)
+	}
+
+	var responseContent string
+	decoder := json.NewDecoder(resp.Body)
+	for {
+		var apiResp APIResponse
+		if err := decoder.Decode(&apiResp); err != nil {
+			if err == io.EOF {
+				break
+			}
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				break
+			}
+			return "", fmt.Errorf("failed to decode API response: %w. The server may be returning invalid or incomplete data", err)
+		}
+
+		if apiResp.Message != nil {
+			responseContent += apiResp.Message.Content
+		}
+	}
+
+	// Add user message and assistant response to history
+	chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
+	chatHistory = append(chatHistory, Message{Role: "assistant", Content: responseContent})
+
+	return strings.TrimSpace(responseContent), nil
 }
