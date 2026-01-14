@@ -130,6 +130,34 @@ func ProcessMessage(msg string) error {
 	return sendMessage(msg)
 }
 
+func modelExists(models []tagsModel, modelName string) bool {
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return false
+	}
+
+	modelNameHasTag := strings.Contains(modelName, ":")
+	modelNameBase := strings.Split(modelName, ":")[0]
+
+	for _, model := range models {
+		name := strings.TrimSpace(model.Name)
+		if name == "" {
+			continue
+		}
+		if strings.EqualFold(name, modelName) {
+			return true
+		}
+		if !modelNameHasTag {
+			modelBase := strings.Split(name, ":")[0]
+			if strings.EqualFold(modelBase, modelNameBase) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // Function to check if the model exists and pull it if necessary
 func checkAndPullIfRequired() error {
 	host := viper.GetString("host")
@@ -157,12 +185,7 @@ func checkAndPullIfRequired() error {
 		return fmt.Errorf("API server returned status %d: %s. Please check server configuration", resp.StatusCode, resp.Status)
 	}
 
-	var tagsResponse struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
-
+	var tagsResponse tagsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tagsResponse); err != nil {
 		return fmt.Errorf("failed to decode API response: %w. The server may be returning invalid data", err)
 	}
@@ -172,24 +195,8 @@ func checkAndPullIfRequired() error {
 		return fmt.Errorf("configuration error: model name is not set")
 	}
 
-	// Check if exact match exists (case-insensitive comparison)
-	for _, model := range tagsResponse.Models {
-		if strings.EqualFold(model.Name, modelName) {
-			return nil
-		}
-	}
-
-	// If model name contains a tag (e.g., "mistral:7B"), also check if base model exists
-	// This handles cases where user wants a specific tag but only base model is available
-	if strings.Contains(modelName, ":") {
-		modelNameBase := strings.Split(modelName, ":")[0]
-		for _, model := range tagsResponse.Models {
-			modelBase := strings.Split(model.Name, ":")[0]
-			if strings.EqualFold(modelBase, modelNameBase) {
-				// Base model exists but with different tag - we need to pull the specific tag
-				break
-			}
-		}
+	if modelExists(tagsResponse.Models, modelName) {
+		return nil
 	}
 
 	fmt.Printf("Model %s not found, pulling...\n", modelName)

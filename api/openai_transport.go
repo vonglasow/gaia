@@ -25,10 +25,12 @@ type openAIChatCompletionResponse struct {
 	} `json:"choices"`
 }
 
+type tagsModel struct {
+	Name string `json:"name"`
+}
+
 type tagsResponse struct {
-	Models []struct {
-		Name string `json:"name"`
-	} `json:"models"`
+	Models []tagsModel `json:"models"`
 }
 
 func init() {
