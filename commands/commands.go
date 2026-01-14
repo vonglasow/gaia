@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	"gaia/api"
 	"gaia/config"
@@ -38,6 +39,81 @@ var RootCmd = &cobra.Command{
 var ConfigCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Set configuration options",
+}
+
+var CacheCmd = &cobra.Command{
+	Use:   "cache",
+	Short: "Manage local response cache",
+}
+
+var CacheClearCmd = &cobra.Command{
+	Use:   "clear",
+	Short: "Clear local response cache",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		removed, err := api.ClearCache()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Removed %d cache entries\n", removed)
+		return nil
+	},
+}
+
+var CacheStatsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Show cache statistics",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		stats, err := api.CacheStats()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Entries: %d\nSize: %d bytes\n", stats.Count, stats.SizeBytes)
+		return nil
+	},
+}
+
+var CacheListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List cache entries",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		entries, err := api.ListCacheEntries()
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			fmt.Println("No cache entries found")
+			return nil
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].Key < entries[j].Key
+		})
+		for _, entry := range entries {
+			fmt.Printf("%s\t%s\t%d bytes\n", entry.Key, entry.CreatedAt.Format(time.RFC3339), entry.SizeBytes)
+		}
+		return nil
+	},
+}
+
+var CacheDumpCmd = &cobra.Command{
+	Use:   "dump",
+	Short: "Print all cache entries",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		entries, err := api.ReadCacheEntries()
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			fmt.Println("No cache entries found")
+			return nil
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].Key < entries[j].Key
+		})
+		for _, entry := range entries {
+			fmt.Printf("Key: %s\nCreatedAt: %s\nResponse:\n%s\n\n", entry.Key, entry.CreatedAt.Format(time.RFC3339), entry.Response)
+		}
+		return nil
+	},
 }
 
 var ListCmd = &cobra.Command{
@@ -196,11 +272,20 @@ func init() {
 
 func Execute() error {
 	ConfigCmd.AddCommand(ListCmd, SetCmd, GetCmd, PathCmd, CreateCmd)
+	CacheCmd.AddCommand(CacheClearCmd, CacheStatsCmd, CacheListCmd, CacheDumpCmd)
 	AskCmd.Flags().StringP("role", "r", "", "Specify role code (default, describe, code)")
 	if err := viper.BindPFlag("systemrole", AskCmd.Flags().Lookup("role")); err != nil {
 		return fmt.Errorf("failed to bind role flag: %w", err)
 	}
-	RootCmd.AddCommand(ConfigCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd)
+	RootCmd.PersistentFlags().Bool("no-cache", false, "Bypass local response cache")
+	if err := viper.BindPFlag("cache.bypass", RootCmd.PersistentFlags().Lookup("no-cache")); err != nil {
+		return fmt.Errorf("failed to bind no-cache flag: %w", err)
+	}
+	RootCmd.PersistentFlags().Bool("refresh-cache", false, "Regenerate and overwrite cache entries")
+	if err := viper.BindPFlag("cache.refresh", RootCmd.PersistentFlags().Lookup("refresh-cache")); err != nil {
+		return fmt.Errorf("failed to bind refresh-cache flag: %w", err)
+	}
+	RootCmd.AddCommand(ConfigCmd, CacheCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd)
 	return RootCmd.Execute()
 }
 
