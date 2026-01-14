@@ -64,8 +64,19 @@ model: "mistral"
 	require.NoError(t, config.InitConfig())
 
 	// changer la valeur d'une clé existante
-	config.SetConfigString("model", "gpt-test")
+	err := config.SetConfigString("model", "gpt-test")
+	require.NoError(t, err)
 
 	v := viper.GetViper()
 	assert.Equal(t, "gpt-test", v.GetString("model"))
+}
+
+func TestSetConfigString_InvalidKey(t *testing.T) {
+	dir := t.TempDir()
+	config.CfgFile = filepath.Join(dir, "config.yaml")
+	require.NoError(t, config.InitConfig())
+
+	err := config.SetConfigString("invalid_key", "value")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid config key")
 }

@@ -18,10 +18,7 @@ import (
 )
 
 // Constants for UI styling
-const (
-	padding  = 2
-	maxWidth = 80
-)
+const padding = 2
 
 // Styling for help text
 var helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render
@@ -76,8 +73,7 @@ func (m *ProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		total     int64
 	}:
 		m.mutex.Lock()
-		m.Completed = msg.completed
-		m.Total = msg.total
+		m.Completed, m.Total = msg.completed, msg.total
 		m.mutex.Unlock()
 		m.progress.SetPercent(float64(m.Completed) / float64(m.Total))
 	}
@@ -92,7 +88,7 @@ func (m *ProgressModel) View() string {
 	}
 
 	progressPercent := float64(0)
-	if m.Total != 0 {
+	if m.Total > 0 {
 		progressPercent = float64(m.Completed) / float64(m.Total)
 	}
 
@@ -107,32 +103,41 @@ var chatHistory []Message
 
 // Main function to process messages and ensure the model exists before sending
 func ProcessMessage(msg string) error {
+	if strings.TrimSpace(msg) == "" {
+		return fmt.Errorf("message cannot be empty")
+	}
 	if err := checkAndPullIfRequired(); err != nil {
 		return err
 	}
-
-	// Add user message to history
-	chatHistory = append(chatHistory, Message{
-		Role:    "user",
-		Content: msg,
-	})
-
 	return sendMessage(msg)
 }
 
 // Function to check if the model exists and pull it if necessary
 func checkAndPullIfRequired() error {
-	url := fmt.Sprintf("http://%s:%d/api/tags", viper.GetString("host"), viper.GetInt("port"))
+	host := viper.GetString("host")
+	port := viper.GetInt("port")
+	if host == "" {
+		return fmt.Errorf("configuration error: host is not set")
+	}
+	if port <= 0 {
+		return fmt.Errorf("configuration error: port is invalid (%d)", port)
+	}
+
+	url := fmt.Sprintf("http://%s:%d/api/tags", host, port)
 
 	resp, err := http.Get(url)
 	if err != nil {
-		return fmt.Errorf("failed to fetch tags: %v", err)
+		return fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
 		}
 	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("API server returned status %d: %s. Please check server configuration", resp.StatusCode, resp.Status)
+	}
 
 	var tagsResponse struct {
 		Models []struct {
@@ -141,40 +146,47 @@ func checkAndPullIfRequired() error {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&tagsResponse); err != nil {
-		return fmt.Errorf("failed to decode tags response: %v", err)
+		return fmt.Errorf("failed to decode API response: %w. The server may be returning invalid data", err)
 	}
 
-	modelExists := false
+	modelName := viper.GetString("model")
 	for _, model := range tagsResponse.Models {
-		if strings.Split(model.Name, ":")[0] == viper.GetString("model") {
-			modelExists = true
-			break
+		if strings.Split(model.Name, ":")[0] == modelName {
+			return nil
 		}
 	}
-
-	if !modelExists {
-		fmt.Printf("Model %s not found, pulling...\n", viper.GetString("model"))
-		return pullModel()
-	}
-
-	return nil
+	fmt.Printf("Model %s not found, pulling...\n", modelName)
+	return pullModel()
 }
 
 // Pull the model using a progress bar
 func pullModel() error {
-	pullURL := fmt.Sprintf("http://%s:%d/api/pull", viper.GetString("host"), viper.GetInt("port"))
-	pullData := map[string]string{"name": viper.GetString("model")}
-	pullDataBytes, _ := json.Marshal(pullData)
+	host := viper.GetString("host")
+	port := viper.GetInt("port")
+	modelName := viper.GetString("model")
+	if modelName == "" {
+		return fmt.Errorf("configuration error: model name is not set")
+	}
+
+	pullURL := fmt.Sprintf("http://%s:%d/api/pull", host, port)
+	pullDataBytes, err := json.Marshal(map[string]string{"name": modelName})
+	if err != nil {
+		return fmt.Errorf("failed to prepare pull request: %w", err)
+	}
 
 	resp, err := http.Post(pullURL, "application/json", bytes.NewBuffer(pullDataBytes))
 	if err != nil {
-		return fmt.Errorf("failed to pull model: %v", err)
+		return fmt.Errorf("failed to connect to API server to pull model '%s': %w. Please ensure the server is running", modelName, err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
 		}
 	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("API server returned status %d while pulling model '%s': %s", resp.StatusCode, modelName, resp.Status)
+	}
 
 	model := &ProgressModel{progress: progress.New(progress.WithWidth(50))}
 	p := tea.NewProgram(model)
@@ -187,6 +199,9 @@ func pullModel() error {
 				Total     int64 `json:"total"`
 			}
 			if err := decoder.Decode(&pullResponse); err != nil {
+				if err != io.EOF {
+					fmt.Fprintf(os.Stderr, "Warning: error decoding pull progress: %v\n", err)
+				}
 				break
 			}
 			p.Send(struct {
@@ -215,35 +230,20 @@ func buildRequestPayload(userMessage string) (APIRequest, error) {
 	}
 
 	roleTemplate := viper.GetString(fmt.Sprintf("roles.%s", systemRole))
-
 	systemContent := ""
 	if roleTemplate != "" {
 		systemContent = fmt.Sprintf(roleTemplate, os.Getenv("SHELL"), runtime.GOOS)
 	}
 
-	// Prepare messages with history
-	messages := make([]Message, 0)
-
-	// Add system message
-	messages = append(messages, Message{
-		Role:    "system",
-		Content: systemContent,
-	})
-
-	// Add chat history and user message
+	messages := []Message{{Role: "system", Content: systemContent}}
 	messages = append(messages, chatHistory...)
-	messages = append(messages, Message{
-		Role:    "user",
-		Content: userMessage,
-	})
+	messages = append(messages, Message{Role: "user", Content: userMessage})
 
-	request := APIRequest{
+	return APIRequest{
 		Model:    viper.GetString("model"),
 		Messages: messages,
 		Stream:   true,
-	}
-
-	return request, nil
+	}, nil
 }
 
 // Send a message to the API
@@ -258,20 +258,23 @@ func sendMessage(msg string) error {
 		return fmt.Errorf("failed to marshal JSON request: %v", err)
 	}
 
-	url := fmt.Sprintf("http://%s:%d/api/chat", viper.GetString("host"), viper.GetInt("port"))
-	contentType := "application/json"
-
-	resp, err := http.Post(url, contentType, bytes.NewBuffer(requestBody))
+	host := viper.GetString("host")
+	port := viper.GetInt("port")
+	url := fmt.Sprintf("http://%s:%d/api/chat", host, port)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
 	if err != nil {
-		return fmt.Errorf("failed to make HTTP request: %v", err)
+		return fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
 		}
 	}()
 
-	// Process the response and add it to history
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("API server returned status %d: %s. The request may be invalid or the server is experiencing issues", resp.StatusCode, resp.Status)
+	}
+
 	var responseContent string
 	decoder := json.NewDecoder(resp.Body)
 	for {
@@ -283,7 +286,7 @@ func sendMessage(msg string) error {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				break
 			}
-			return fmt.Errorf("error decoding JSON: %v", err)
+			return fmt.Errorf("failed to decode API response: %w. The server may be returning invalid or incomplete data", err)
 		}
 
 		if apiResp.Message != nil {
@@ -293,11 +296,9 @@ func sendMessage(msg string) error {
 	}
 	fmt.Println()
 
-	// Add assistant response to history
-	chatHistory = append(chatHistory, Message{
-		Role:    "assistant",
-		Content: responseContent,
-	})
+	// Add user message and assistant response to history
+	chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
+	chatHistory = append(chatHistory, Message{Role: "assistant", Content: responseContent})
 
 	return nil
 }
