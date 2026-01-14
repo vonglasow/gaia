@@ -16,12 +16,20 @@ var validKeys = map[string]bool{
 	"model": true, "host": true, "port": true,
 	"roles.default": true, "roles.describe": true, "roles.shell": true, "roles.code": true,
 	"roles.commit": true, "roles.branch": true,
+	"cache.enabled": true, "cache.dir": true,
 }
 
 func setDefaults() {
 	viper.SetDefault("model", "mistral")
 	viper.SetDefault("host", "localhost")
 	viper.SetDefault("port", 11434)
+	viper.SetDefault("cache.enabled", true)
+	viper.SetDefault("cache.bypass", false)
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		viper.SetDefault("cache.dir", filepath.Join(homeDir, ".config", "gaia", "cache"))
+	} else {
+		viper.SetDefault("cache.dir", ".gaia-cache")
+	}
 	viper.SetDefault("roles.default", "You are programming and system administration assistant. You are managing %s operating system with %s shell. Provide short responses in about 100 words, unless you are specifically asked for more details. If you need to store any data, assume it will be stored in the conversation. APPLY MARKDOWN formatting when possible.")
 	viper.SetDefault("roles.describe", "Provide a terse, single sentence description of the given shell command. Describe each argument and option of the command. Provide short responses in about 80 words. APPLY MARKDOWN formatting when possible.")
 	viper.SetDefault("roles.shell", "Provide only %s commands for %s without any description. If there is a lack of details, provide the most logical solution. Ensure the output is a valid shell command. If multiple steps are required, try to combine them using &&. Provide only plain text without Markdown formatting. Do not use markdown formatting such as ```.")
@@ -77,7 +85,7 @@ func InitConfig() error {
 
 func SetConfigString(key, value string) error {
 	if !validKeys[key] {
-		return fmt.Errorf("invalid config key '%s'. Valid keys are: model, host, port, roles.default, roles.describe, roles.shell, roles.code", key)
+		return fmt.Errorf("invalid config key '%s'. Valid keys are: model, host, port, cache.enabled, cache.dir, roles.default, roles.describe, roles.shell, roles.code, roles.commit, roles.branch", key)
 	}
 	viper.Set(key, value)
 	if err := viper.WriteConfig(); err != nil {

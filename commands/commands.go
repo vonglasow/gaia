@@ -40,6 +40,37 @@ var ConfigCmd = &cobra.Command{
 	Short: "Set configuration options",
 }
 
+var CacheCmd = &cobra.Command{
+	Use:   "cache",
+	Short: "Manage local response cache",
+}
+
+var CacheClearCmd = &cobra.Command{
+	Use:   "clear",
+	Short: "Clear local response cache",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		removed, err := api.ClearCache()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Removed %d cache entries\n", removed)
+		return nil
+	},
+}
+
+var CacheStatsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Show cache statistics",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		stats, err := api.CacheStats()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Entries: %d\nSize: %d bytes\n", stats.Count, stats.SizeBytes)
+		return nil
+	},
+}
+
 var ListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List configuration settings",
@@ -196,11 +227,16 @@ func init() {
 
 func Execute() error {
 	ConfigCmd.AddCommand(ListCmd, SetCmd, GetCmd, PathCmd, CreateCmd)
+	CacheCmd.AddCommand(CacheClearCmd, CacheStatsCmd)
 	AskCmd.Flags().StringP("role", "r", "", "Specify role code (default, describe, code)")
 	if err := viper.BindPFlag("systemrole", AskCmd.Flags().Lookup("role")); err != nil {
 		return fmt.Errorf("failed to bind role flag: %w", err)
 	}
-	RootCmd.AddCommand(ConfigCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd)
+	RootCmd.PersistentFlags().Bool("no-cache", false, "Bypass local response cache")
+	if err := viper.BindPFlag("cache.bypass", RootCmd.PersistentFlags().Lookup("no-cache")); err != nil {
+		return fmt.Errorf("failed to bind no-cache flag: %w", err)
+	}
+	RootCmd.AddCommand(ConfigCmd, CacheCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd)
 	return RootCmd.Execute()
 }
 
