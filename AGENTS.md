@@ -54,7 +54,7 @@ This is a Go CLI project with a small, clear structure (from the repo root):
 
 The CI workflow runs on push + PR and enforces:
 
-- Go version: **1.24** (matrix)
+- Go version: **1.25** (matrix)
 - `golangci-lint` via GitHub Action
 - `pre-commit-ci/lite-action`
 - tests: `go test -v ./...`
@@ -104,6 +104,12 @@ go test -v ./...
 
 # Local build
 go build ./...
+
+# check help
+go run main.go --help
+
+# display current config to use when you modify main.go or config folder before and after modification
+go run main.go config list
 ```
 
 ### Linting

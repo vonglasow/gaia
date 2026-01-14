@@ -107,3 +107,57 @@ func TestBuildRequestPayload_WithPreviousHistory(t *testing.T) {
 		t.Errorf("expected preserved history content, got %s", req.Messages[1].Content)
 	}
 }
+
+func TestModelExists(t *testing.T) {
+	tests := []struct {
+		name      string
+		models    []tagsModel
+		modelName string
+		expected  bool
+	}{
+		{
+			name:      "exact tag match",
+			models:    []tagsModel{{Name: "mistral:latest"}},
+			modelName: "mistral:latest",
+			expected:  true,
+		},
+		{
+			name:      "base name matches tagged model",
+			models:    []tagsModel{{Name: "mistral:latest"}},
+			modelName: "mistral",
+			expected:  true,
+		},
+		{
+			name:      "base name matches untagged model",
+			models:    []tagsModel{{Name: "mistral"}},
+			modelName: "mistral",
+			expected:  true,
+		},
+		{
+			name:      "specific tag missing when only base exists",
+			models:    []tagsModel{{Name: "mistral"}},
+			modelName: "mistral:7b",
+			expected:  false,
+		},
+		{
+			name:      "specific tag missing when other tag exists",
+			models:    []tagsModel{{Name: "mistral:latest"}},
+			modelName: "mistral:7b",
+			expected:  false,
+		},
+		{
+			name:      "case insensitive base match",
+			models:    []tagsModel{{Name: "MISTRAL:latest"}},
+			modelName: "mistral",
+			expected:  true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := modelExists(test.models, test.modelName); got != test.expected {
+				t.Errorf("expected %v, got %v", test.expected, got)
+			}
+		})
+	}
+}
