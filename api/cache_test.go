@@ -220,3 +220,229 @@ func TestCacheStatsAndClear(t *testing.T) {
 		t.Fatalf("expected 0 cache entries after clear, got %d", stats.Count)
 	}
 }
+
+func TestResolveProvider_Boundaries(t *testing.T) {
+	tests := []struct {
+		name     string
+		host     string
+		port     int
+		expected string
+	}{
+		{
+			name:     "openai with exact match",
+			host:     "api.openai.com",
+			port:     443,
+			expected: "openai",
+		},
+		{
+			name:     "openai with whitespace",
+			host:     "  api.openai.com  ",
+			port:     443,
+			expected: "openai",
+		},
+		{
+			name:     "openai wrong port",
+			host:     "api.openai.com",
+			port:     8080,
+			expected: "ollama",
+		},
+		{
+			name:     "localhost",
+			host:     "localhost",
+			port:     11434,
+			expected: "ollama",
+		},
+		{
+			name:     "empty host",
+			host:     "",
+			port:     443,
+			expected: "ollama",
+		},
+		{
+			name:     "zero port",
+			host:     "api.openai.com",
+			port:     0,
+			expected: "ollama",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Set("host", tt.host)
+			viper.Set("port", tt.port)
+			got := resolveProvider()
+			if got != tt.expected {
+				t.Errorf("resolveProvider() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetCacheDir_FallbackToHomeDir(t *testing.T) {
+	oldCacheDir := viper.GetString("cache.dir")
+	viper.Set("cache.dir", "")
+	t.Cleanup(func() {
+		viper.Set("cache.dir", oldCacheDir)
+	})
+
+	cacheDir, err := getCacheDir()
+	require.NoError(t, err)
+	assert.Contains(t, cacheDir, ".config/gaia/cache")
+}
+
+func TestGetCacheDir_CustomPath(t *testing.T) {
+	customPath := "/custom/cache/path"
+	oldCacheDir := viper.GetString("cache.dir")
+	viper.Set("cache.dir", customPath)
+	t.Cleanup(func() {
+		viper.Set("cache.dir", oldCacheDir)
+	})
+
+	cacheDir, err := getCacheDir()
+	require.NoError(t, err)
+	assert.Equal(t, customPath, cacheDir)
+}
+
+func TestGetCacheDir_WithWhitespace(t *testing.T) {
+	customPath := "  /custom/cache/path  "
+	oldCacheDir := viper.GetString("cache.dir")
+	viper.Set("cache.dir", customPath)
+	t.Cleanup(func() {
+		viper.Set("cache.dir", oldCacheDir)
+	})
+
+	cacheDir, err := getCacheDir()
+	require.NoError(t, err)
+	assert.Equal(t, "/custom/cache/path", cacheDir)
+}
+
+func TestReadCache_Boundaries(t *testing.T) {
+	tempDir := t.TempDir()
+	viper.Set("cache.dir", tempDir)
+
+	// Test reading non-existent key
+	_, ok, err := readCache("nonexistent")
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	// Test reading with empty key
+	_, ok, err = readCache("")
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	// Write and read empty response
+	require.NoError(t, writeCache("empty-key", ""))
+	response, ok, err := readCache("empty-key")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "", response)
+
+	// Write and read very long response
+	longResponse := string(make([]byte, 10000))
+	require.NoError(t, writeCache("long-key", longResponse))
+	response, ok, err = readCache("long-key")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, longResponse, response)
+}
+
+func TestWriteCache_Boundaries(t *testing.T) {
+	tempDir := t.TempDir()
+	viper.Set("cache.dir", tempDir)
+
+	// Test writing empty key
+	err := writeCache("", "response")
+	require.NoError(t, err)
+
+	// Test writing empty response
+	err = writeCache("key", "")
+	require.NoError(t, err)
+
+	// Test overwriting existing key
+	require.NoError(t, writeCache("key", "response1"))
+	require.NoError(t, writeCache("key", "response2"))
+	response, ok, err := readCache("key")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "response2", response)
+}
+
+func TestCacheStats_EmptyCache(t *testing.T) {
+	tempDir := t.TempDir()
+	viper.Set("cache.dir", tempDir)
+
+	stats, err := CacheStats()
+	require.NoError(t, err)
+	assert.Equal(t, 0, stats.Count)
+	assert.Equal(t, int64(0), stats.SizeBytes)
+}
+
+func TestCacheStats_MissingDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+	viper.Set("cache.dir", filepath.Join(tempDir, "nonexistent"))
+
+	stats, err := CacheStats()
+	require.NoError(t, err)
+	assert.Equal(t, 0, stats.Count)
+	assert.Equal(t, int64(0), stats.SizeBytes)
+}
+
+func TestClearCache_EmptyCache(t *testing.T) {
+	tempDir := t.TempDir()
+	viper.Set("cache.dir", tempDir)
+
+	removed, err := ClearCache()
+	require.NoError(t, err)
+	assert.Equal(t, 0, removed)
+}
+
+func TestClearCache_MissingDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+	viper.Set("cache.dir", filepath.Join(tempDir, "nonexistent"))
+
+	removed, err := ClearCache()
+	require.NoError(t, err)
+	assert.Equal(t, 0, removed)
+}
+
+func TestListCacheEntries_IgnoresNonJsonFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	viper.Set("cache.dir", tempDir)
+
+	// Create a non-JSON file
+	nonJSONPath := filepath.Join(tempDir, "not-a-cache.txt")
+	require.NoError(t, os.WriteFile(nonJSONPath, []byte("test"), 0600))
+
+	// Create a valid cache entry
+	require.NoError(t, writeCache("valid-key", "valid-response"))
+
+	entries, err := ListCacheEntries()
+	require.NoError(t, err)
+	assert.Len(t, entries, 1)
+	assert.Equal(t, "valid-key", entries[0].Key)
+}
+
+func TestListCacheEntries_IgnoresSubdirectories(t *testing.T) {
+	tempDir := t.TempDir()
+	viper.Set("cache.dir", tempDir)
+
+	// Create a subdirectory
+	subDir := filepath.Join(tempDir, "subdir")
+	require.NoError(t, os.Mkdir(subDir, 0755))
+
+	// Create a valid cache entry
+	require.NoError(t, writeCache("valid-key", "valid-response"))
+
+	entries, err := ListCacheEntries()
+	require.NoError(t, err)
+	assert.Len(t, entries, 1)
+}
+
+func TestReadCacheEntries_EmptyCache(t *testing.T) {
+	tempDir := t.TempDir()
+	viper.Set("cache.dir", tempDir)
+
+	entries, err := ReadCacheEntries()
+	require.NoError(t, err)
+	assert.Len(t, entries, 0)
+}
