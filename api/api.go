@@ -124,10 +124,32 @@ func ProcessMessage(msg string) error {
 	if strings.TrimSpace(msg) == "" {
 		return fmt.Errorf("message cannot be empty")
 	}
+	useCache := cacheEnabled()
+	var cacheKey string
+	if useCache {
+		key, err := buildCacheKey(msg)
+		if err == nil {
+			cacheKey = key
+			if cached, ok, err := readCache(cacheKey); err == nil && ok {
+				fmt.Print(cached)
+				fmt.Println()
+				chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
+				chatHistory = append(chatHistory, Message{Role: "assistant", Content: cached})
+				return nil
+			}
+		}
+	}
 	if err := checkAndPullIfRequired(); err != nil {
 		return err
 	}
-	return sendMessage(msg)
+	response, err := sendMessage(msg)
+	if err != nil {
+		return err
+	}
+	if useCache && cacheKey != "" {
+		_ = writeCache(cacheKey, response)
+	}
+	return nil
 }
 
 func modelExists(models []tagsModel, modelName string) bool {
@@ -297,15 +319,15 @@ func buildRequestPayload(userMessage string) (APIRequest, error) {
 }
 
 // Send a message to the API
-func sendMessage(msg string) error {
+func sendMessage(msg string) (string, error) {
 	request, err := buildRequestPayload(msg)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	requestBody, err := json.Marshal(request)
 	if err != nil {
-		return fmt.Errorf("failed to marshal JSON request: %v", err)
+		return "", fmt.Errorf("failed to marshal JSON request: %v", err)
 	}
 
 	host := viper.GetString("host")
@@ -313,7 +335,7 @@ func sendMessage(msg string) error {
 	url := fmt.Sprintf("http://%s:%d/api/chat", host, port)
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
 	if err != nil {
-		return fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
+		return "", fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -322,7 +344,7 @@ func sendMessage(msg string) error {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("API server returned status %d: %s. The request may be invalid or the server is experiencing issues", resp.StatusCode, resp.Status)
+		return "", fmt.Errorf("API server returned status %d: %s. The request may be invalid or the server is experiencing issues", resp.StatusCode, resp.Status)
 	}
 
 	var responseContent string
@@ -336,7 +358,7 @@ func sendMessage(msg string) error {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				break
 			}
-			return fmt.Errorf("failed to decode API response: %w. The server may be returning invalid or incomplete data", err)
+			return "", fmt.Errorf("failed to decode API response: %w. The server may be returning invalid or incomplete data", err)
 		}
 
 		if apiResp.Message != nil {
@@ -350,7 +372,7 @@ func sendMessage(msg string) error {
 	chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
 	chatHistory = append(chatHistory, Message{Role: "assistant", Content: responseContent})
 
-	return nil
+	return responseContent, nil
 }
 
 // ProcessMessageWithResponse processes a message and returns the response without printing it
@@ -358,10 +380,30 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 	if strings.TrimSpace(msg) == "" {
 		return "", fmt.Errorf("message cannot be empty")
 	}
+	useCache := cacheEnabled()
+	var cacheKey string
+	if useCache {
+		key, err := buildCacheKey(msg)
+		if err == nil {
+			cacheKey = key
+			if cached, ok, err := readCache(cacheKey); err == nil && ok {
+				chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
+				chatHistory = append(chatHistory, Message{Role: "assistant", Content: cached})
+				return strings.TrimSpace(cached), nil
+			}
+		}
+	}
 	if err := checkAndPullIfRequired(); err != nil {
 		return "", err
 	}
-	return sendMessageWithResponse(msg)
+	response, err := sendMessageWithResponse(msg)
+	if err != nil {
+		return "", err
+	}
+	if useCache && cacheKey != "" {
+		_ = writeCache(cacheKey, response)
+	}
+	return response, nil
 }
 
 // sendMessageWithResponse sends a message and returns the response without printing
