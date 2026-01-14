@@ -124,18 +124,22 @@ func ProcessMessage(msg string) error {
 	if strings.TrimSpace(msg) == "" {
 		return fmt.Errorf("message cannot be empty")
 	}
-	useCache := cacheEnabled()
+	refreshCache := viper.GetBool("cache.refresh")
+	bypassCache := viper.GetBool("cache.bypass")
+	useCache := cacheEnabled() || refreshCache
 	var cacheKey string
 	if useCache {
 		key, err := buildCacheKey(msg)
 		if err == nil {
 			cacheKey = key
-			if cached, ok, err := readCache(cacheKey); err == nil && ok {
-				fmt.Print(cached)
-				fmt.Println()
-				chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
-				chatHistory = append(chatHistory, Message{Role: "assistant", Content: cached})
-				return nil
+			if !bypassCache && !refreshCache {
+				if cached, ok, err := readCache(cacheKey); err == nil && ok {
+					fmt.Print(cached)
+					fmt.Println()
+					chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
+					chatHistory = append(chatHistory, Message{Role: "assistant", Content: cached})
+					return nil
+				}
 			}
 		}
 	}
@@ -146,7 +150,7 @@ func ProcessMessage(msg string) error {
 	if err != nil {
 		return err
 	}
-	if useCache && cacheKey != "" {
+	if useCache && cacheKey != "" && (!bypassCache || refreshCache) {
 		_ = writeCache(cacheKey, response)
 	}
 	return nil
@@ -380,16 +384,20 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 	if strings.TrimSpace(msg) == "" {
 		return "", fmt.Errorf("message cannot be empty")
 	}
-	useCache := cacheEnabled()
+	refreshCache := viper.GetBool("cache.refresh")
+	bypassCache := viper.GetBool("cache.bypass")
+	useCache := cacheEnabled() || refreshCache
 	var cacheKey string
 	if useCache {
 		key, err := buildCacheKey(msg)
 		if err == nil {
 			cacheKey = key
-			if cached, ok, err := readCache(cacheKey); err == nil && ok {
-				chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
-				chatHistory = append(chatHistory, Message{Role: "assistant", Content: cached})
-				return strings.TrimSpace(cached), nil
+			if !bypassCache && !refreshCache {
+				if cached, ok, err := readCache(cacheKey); err == nil && ok {
+					chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
+					chatHistory = append(chatHistory, Message{Role: "assistant", Content: cached})
+					return strings.TrimSpace(cached), nil
+				}
 			}
 		}
 	}
@@ -400,7 +408,7 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if useCache && cacheKey != "" {
+	if useCache && cacheKey != "" && (!bypassCache || refreshCache) {
 		_ = writeCache(cacheKey, response)
 	}
 	return response, nil

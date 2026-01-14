@@ -2,25 +2,86 @@ package api
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestListCacheEntries_EmptyWhenMissingDir(t *testing.T) {
+	tempDir := t.TempDir()
+	oldCacheDir := viper.GetString("cache.dir")
+	viper.Set("cache.dir", filepath.Join(tempDir, "missing"))
+	t.Cleanup(func() {
+		viper.Set("cache.dir", oldCacheDir)
+	})
+
+	entries, err := ListCacheEntries()
+	require.NoError(t, err)
+	assert.Len(t, entries, 0)
+}
+
+func TestListCacheEntries_Metadata(t *testing.T) {
+	cacheDir := t.TempDir()
+	oldCacheDir := viper.GetString("cache.dir")
+	viper.Set("cache.dir", cacheDir)
+	t.Cleanup(func() {
+		viper.Set("cache.dir", oldCacheDir)
+	})
+
+	require.NoError(t, writeCache("key-one", "response-one"))
+	require.NoError(t, writeCache("key-two", "response-two"))
+
+	entries, err := ListCacheEntries()
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+
+	entriesByKey := make(map[string]CacheEntryInfo, len(entries))
+	for _, entry := range entries {
+		entriesByKey[entry.Key] = entry
+	}
+
+	for _, key := range []string{"key-one", "key-two"} {
+		entry, ok := entriesByKey[key]
+		require.True(t, ok)
+		assert.False(t, entry.CreatedAt.IsZero())
+		assert.Greater(t, entry.SizeBytes, int64(0))
+	}
+}
+
+func TestReadCacheEntries_ReturnsResponses(t *testing.T) {
+	cacheDir := t.TempDir()
+	oldCacheDir := viper.GetString("cache.dir")
+	viper.Set("cache.dir", cacheDir)
+	t.Cleanup(func() {
+		viper.Set("cache.dir", oldCacheDir)
+	})
+
+	require.NoError(t, writeCache("key-one", "response-one"))
+	require.NoError(t, writeCache("key-two", "response-two"))
+
+	entries, err := ReadCacheEntries()
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+
+	responses := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		responses[entry.Key] = entry.Response
+	}
+
+	assert.Equal(t, "response-one", responses["key-one"])
+	assert.Equal(t, "response-two", responses["key-two"])
+}
 
 func TestCacheEnabled(t *testing.T) {
 	viper.Set("cache.enabled", true)
-	viper.Set("cache.bypass", false)
 	if !cacheEnabled() {
 		t.Fatalf("expected cache to be enabled")
 	}
 
-	viper.Set("cache.bypass", true)
-	if cacheEnabled() {
-		t.Fatalf("expected cache to be disabled when bypass is true")
-	}
-
 	viper.Set("cache.enabled", false)
-	viper.Set("cache.bypass", false)
 	if cacheEnabled() {
 		t.Fatalf("expected cache to be disabled when cache.enabled is false")
 	}
