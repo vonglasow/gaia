@@ -3,9 +3,11 @@ package commands_test
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"gaia/commands"
+	"gaia/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,4 +47,24 @@ func TestVersionCmd(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, string(out), "Gaia")
+}
+
+func TestToolCmd_Structure(t *testing.T) {
+	// Test that ToolCmd is properly defined
+	assert.NotNil(t, commands.ToolCmd)
+	assert.Contains(t, commands.ToolCmd.Use, "tool")
+}
+
+func TestToolCmd_NoConfig(t *testing.T) {
+	// Set up config
+	tmpDir := t.TempDir()
+	config.CfgFile = filepath.Join(tmpDir, "config.yaml")
+	err := config.InitConfig()
+	require.NoError(t, err)
+
+	// Test tool command with non-existent tool
+	commands.ToolCmd.SetArgs([]string{"nonexistent", "action"})
+	err = commands.ToolCmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not configured")
 }

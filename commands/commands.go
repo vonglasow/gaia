@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 
@@ -199,11 +200,290 @@ func Execute() error {
 	if err := viper.BindPFlag("systemrole", AskCmd.Flags().Lookup("role")); err != nil {
 		return fmt.Errorf("failed to bind role flag: %w", err)
 	}
-	RootCmd.AddCommand(ConfigCmd, VersionCmd, AskCmd, ChatCmd)
+	RootCmd.AddCommand(ConfigCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd)
 	return RootCmd.Execute()
 }
 
 // CallReadStdinForTest allows tests to call the unexported readStdin function
 func CallReadStdinForTest() string {
 	return readStdin()
+}
+
+// executeExternalCommand runs an external command and returns its output
+func executeExternalCommand(command string) (string, error) {
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("empty command")
+	}
+
+	cmd := exec.Command(parts[0], parts[1:]...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// Some commands return non-zero exit codes for valid reasons (e.g., git diff with no changes)
+			if exitErr.ExitCode() == 1 {
+				return strings.TrimSpace(string(output)), nil
+			}
+			return "", fmt.Errorf("command failed with exit code %d: %w", exitErr.ExitCode(), err)
+		}
+		return "", fmt.Errorf("failed to execute command: %w", err)
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+// getToolActionConfig retrieves the configuration for a specific tool action
+func getToolActionConfig(tool, action string) (map[string]interface{}, error) {
+	key := fmt.Sprintf("tools.%s.%s", tool, action)
+	if !viper.IsSet(key) {
+		return nil, fmt.Errorf("tool action '%s.%s' is not configured. Use 'gaia config list' to see available tools", tool, action)
+	}
+
+	config := viper.GetStringMap(key)
+	if len(config) == 0 {
+		return nil, fmt.Errorf("tool action '%s.%s' has no configuration", tool, action)
+	}
+
+	return config, nil
+}
+
+// promptForContext allows user to add or modify context
+func promptForContext(initialContext string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("\n--- Current Context ---")
+	if initialContext == "" {
+		fmt.Println("(no context)")
+	} else {
+		// Show context with line numbers or truncate if too long
+		lines := strings.Split(initialContext, "\n")
+		if len(lines) > 20 {
+			fmt.Println(strings.Join(lines[:20], "\n"))
+			fmt.Printf("... (%d more lines)\n", len(lines)-20)
+		} else {
+			fmt.Println(initialContext)
+		}
+	}
+	fmt.Println("\nOptions:")
+	fmt.Println("  [Enter] - Use current context as-is")
+	fmt.Println("  [text]  - Replace context with new text")
+	fmt.Println("  [+text] - Append text to context")
+	fmt.Println("  [q]     - Quit")
+	fmt.Print("\n> ")
+
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return initialContext, err
+	}
+
+	input = strings.TrimSpace(input)
+	if input == "q" || input == "quit" {
+		return "", fmt.Errorf("cancelled by user")
+	}
+
+	if input == "" {
+		return initialContext, nil
+	}
+
+	// Check if user wants to append
+	if strings.HasPrefix(input, "+") {
+		appendText := strings.TrimPrefix(input, "+")
+		if initialContext != "" {
+			return fmt.Sprintf("%s\n\n%s", initialContext, strings.TrimSpace(appendText)), nil
+		}
+		return strings.TrimSpace(appendText), nil
+	}
+
+	// Replace context
+	return input, nil
+}
+
+// promptForConfirmation asks user to confirm before executing
+func promptForConfirmation(message string) (bool, error) {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("\n--- Generated Message ---")
+	fmt.Println(message)
+	fmt.Println("\nOptions:")
+	fmt.Println("  [y/Enter] - Confirm and execute")
+	fmt.Println("  [n]       - Cancel")
+	fmt.Print("\n> ")
+
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return false, err
+	}
+
+	input = strings.ToLower(strings.TrimSpace(input))
+	return input == "y" || input == "yes" || input == "", nil
+}
+
+// executeToolAction executes a configured tool action
+func executeToolAction(tool, action string, args []string) error {
+	config, err := getToolActionConfig(tool, action)
+	if err != nil {
+		return err
+	}
+
+	// Get context command if configured
+	var context string
+	if contextCmd, ok := config["context_command"].(string); ok && contextCmd != "" {
+		context, err = executeExternalCommand(contextCmd)
+		if err != nil {
+			return fmt.Errorf("failed to get context: %w", err)
+		}
+	}
+
+	// Allow user to add/modify context
+	context, err = promptForContext(context)
+	if err != nil {
+		return err
+	}
+
+	// Build prompt
+	var prompt string
+	if len(args) > 0 {
+		// Use provided arguments as description
+		prompt = strings.Join(args, " ")
+		if context != "" {
+			prompt = fmt.Sprintf("%s\n\nContext:\n%s", prompt, context)
+		}
+	} else if context != "" {
+		// Use context only
+		prompt = context
+	} else {
+		return fmt.Errorf("no context or arguments provided for tool action '%s.%s'", tool, action)
+	}
+
+	// Get role from config
+	role, ok := config["role"].(string)
+	if !ok || role == "" {
+		role = "default"
+	}
+
+	// Temporarily set the role
+	oldRole := viper.GetString("systemrole")
+	viper.Set("systemrole", role)
+	defer viper.Set("systemrole", oldRole)
+
+	// Process message with AI
+	oldChatHistory := api.GetChatHistory()
+	api.ClearChatHistory()
+	defer func() {
+		api.SetChatHistory(oldChatHistory)
+	}()
+
+	response, err := api.ProcessMessageWithResponse(prompt)
+	if err != nil {
+		return fmt.Errorf("failed to generate response: %w", err)
+	}
+
+	// Ask for confirmation before executing
+	confirmed, err := promptForConfirmation(response)
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		fmt.Println("Cancelled.")
+		return nil
+	}
+
+	// Execute command if configured
+	if executeCmd, ok := config["execute_command"].(string); ok && executeCmd != "" {
+		// Check if command uses {file} placeholder (for multi-line content)
+		if strings.Contains(executeCmd, "{file}") {
+			// Create temporary file with the response
+			tmpFile, err := os.CreateTemp("", "gaia-*.txt")
+			if err != nil {
+				return fmt.Errorf("failed to create temporary file: %w", err)
+			}
+			tmpFileName := tmpFile.Name()
+			defer func() {
+				if err := os.Remove(tmpFileName); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to remove temporary file %s: %v\n", tmpFileName, err)
+				}
+			}()
+
+			if _, err := tmpFile.WriteString(response); err != nil {
+				_ = tmpFile.Close()
+				return fmt.Errorf("failed to write to temporary file: %w", err)
+			}
+			if err := tmpFile.Close(); err != nil {
+				return fmt.Errorf("failed to close temporary file: %w", err)
+			}
+
+			// Replace {file} with the temporary file path
+			finalCmd := strings.ReplaceAll(executeCmd, "{file}", tmpFile.Name())
+			finalCmd = strings.ReplaceAll(finalCmd, "{response}", tmpFile.Name())
+			finalCmd = strings.ReplaceAll(finalCmd, "{output}", tmpFile.Name())
+
+			// Execute the command
+			parts := strings.Fields(finalCmd)
+			if len(parts) == 0 {
+				return fmt.Errorf("invalid execute_command in configuration")
+			}
+
+			cmd := exec.Command(parts[0], parts[1:]...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to execute command '%s': %w", finalCmd, err)
+			}
+		} else {
+			// Replace {response} placeholder with the AI response (for single-line commands)
+			finalCmd := strings.ReplaceAll(executeCmd, "{response}", strings.TrimSpace(response))
+			finalCmd = strings.ReplaceAll(finalCmd, "{output}", strings.TrimSpace(response))
+
+			// Execute the command
+			parts := strings.Fields(finalCmd)
+			if len(parts) == 0 {
+				return fmt.Errorf("invalid execute_command in configuration")
+			}
+
+			cmd := exec.Command(parts[0], parts[1:]...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to execute command '%s': %w", finalCmd, err)
+			}
+		}
+	} else {
+		// Just print the response
+		fmt.Println(response)
+	}
+
+	return nil
+}
+
+var ToolCmd = &cobra.Command{
+	Use:   "tool <tool> <action> [args...]",
+	Short: "Execute a configured external tool action",
+	Long: `Execute a configured external tool action. Tools and actions are defined in the configuration file.
+
+Example:
+  gaia tool git commit
+  gaia tool git branch "add user authentication"
+
+Configuration format in config.yaml:
+  tools:
+    git:
+      commit:
+        context_command: "git diff --staged"
+        role: "commit"
+        execute_command: "git commit -F {file}"
+      branch:
+        context_command: "git diff"
+        role: "branch"
+        execute_command: "git checkout -b {response}"
+
+Note: Use {file} placeholder for multi-line content (like commit messages).
+Use {response} for single-line content (like branch names).`,
+	Args: cobra.MinimumNArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		tool := args[0]
+		action := args[1]
+		actionArgs := args[2:]
+
+		return executeToolAction(tool, action, actionArgs)
+	},
 }
