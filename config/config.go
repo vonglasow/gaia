@@ -25,6 +25,7 @@ func setDefaults() {
 	viper.SetDefault("port", 11434)
 	viper.SetDefault("cache.enabled", true)
 	viper.SetDefault("cache.bypass", false)
+	viper.SetDefault("cache.refresh", false)
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		viper.SetDefault("cache.dir", filepath.Join(homeDir, ".config", "gaia", "cache"))
 	} else {

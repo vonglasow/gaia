@@ -24,6 +24,12 @@ type cacheEntry struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type CacheEntryInfo struct {
+	Key       string
+	CreatedAt time.Time
+	SizeBytes int64
+}
+
 type cacheKeyPayload struct {
 	Provider     string    `json:"provider"`
 	Host         string    `json:"host"`
@@ -35,9 +41,6 @@ type cacheKeyPayload struct {
 }
 
 func cacheEnabled() bool {
-	if viper.GetBool("cache.bypass") {
-		return false
-	}
 	return viper.GetBool("cache.enabled")
 }
 
@@ -137,6 +140,94 @@ func writeCache(key, response string) error {
 	}
 	cachePath := filepath.Join(cacheDir, key+".json")
 	return os.WriteFile(cachePath, data, 0o600)
+}
+
+func ListCacheEntries() ([]CacheEntryInfo, error) {
+	cacheDir, err := getCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(cacheDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []CacheEntryInfo{}, nil
+		}
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("cache path %s is not a directory", cacheDir)
+	}
+
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []CacheEntryInfo
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		fileInfo, err := entry.Info()
+		if err != nil {
+			return nil, err
+		}
+		data, err := os.ReadFile(filepath.Join(cacheDir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		var cached cacheEntry
+		if err := json.Unmarshal(data, &cached); err != nil {
+			return nil, err
+		}
+		results = append(results, CacheEntryInfo{
+			Key:       cached.Key,
+			CreatedAt: cached.CreatedAt,
+			SizeBytes: fileInfo.Size(),
+		})
+	}
+
+	return results, nil
+}
+
+func ReadCacheEntries() ([]cacheEntry, error) {
+	cacheDir, err := getCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(cacheDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []cacheEntry{}, nil
+		}
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("cache path %s is not a directory", cacheDir)
+	}
+
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []cacheEntry
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(cacheDir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		var cached cacheEntry
+		if err := json.Unmarshal(data, &cached); err != nil {
+			return nil, err
+		}
+		results = append(results, cached)
+	}
+
+	return results, nil
 }
 
 func CacheStats() (CacheStatsInfo, error) {
