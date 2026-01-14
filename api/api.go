@@ -311,7 +311,9 @@ func buildRequestPayload(userMessage string) (APIRequest, error) {
 		systemContent = fmt.Sprintf(roleTemplate, os.Getenv("SHELL"), runtime.GOOS)
 	}
 
-	messages := []Message{{Role: "system", Content: systemContent}}
+	// Pre-allocate with exact capacity: system message + chat history + user message
+	messages := make([]Message, 0, len(chatHistory)+2)
+	messages = append(messages, Message{Role: "system", Content: systemContent})
 	messages = append(messages, chatHistory...)
 	messages = append(messages, Message{Role: "user", Content: userMessage})
 
@@ -324,59 +326,7 @@ func buildRequestPayload(userMessage string) (APIRequest, error) {
 
 // Send a message to the API
 func sendMessage(msg string) (string, error) {
-	request, err := buildRequestPayload(msg)
-	if err != nil {
-		return "", err
-	}
-
-	requestBody, err := json.Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal JSON request: %v", err)
-	}
-
-	host := viper.GetString("host")
-	port := viper.GetInt("port")
-	url := fmt.Sprintf("http://%s:%d/api/chat", host, port)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API server returned status %d: %s. The request may be invalid or the server is experiencing issues", resp.StatusCode, resp.Status)
-	}
-
-	var responseContent string
-	decoder := json.NewDecoder(resp.Body)
-	for {
-		var apiResp APIResponse
-		if err := decoder.Decode(&apiResp); err != nil {
-			if err == io.EOF {
-				break
-			}
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				break
-			}
-			return "", fmt.Errorf("failed to decode API response: %w. The server may be returning invalid or incomplete data", err)
-		}
-
-		if apiResp.Message != nil {
-			fmt.Print(apiResp.Message.Content)
-			responseContent += apiResp.Message.Content
-		}
-	}
-	fmt.Println()
-
-	// Add user message and assistant response to history
-	chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
-	chatHistory = append(chatHistory, Message{Role: "assistant", Content: responseContent})
-
-	return responseContent, nil
+	return sendMessageInternal(msg, true)
 }
 
 // ProcessMessageWithResponse processes a message and returns the response without printing it
@@ -404,18 +354,18 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 	if err := checkAndPullIfRequired(); err != nil {
 		return "", err
 	}
-	response, err := sendMessageWithResponse(msg)
+	response, err := sendMessageInternal(msg, false)
 	if err != nil {
 		return "", err
 	}
 	if useCache && cacheKey != "" && (!bypassCache || refreshCache) {
 		_ = writeCache(cacheKey, response)
 	}
-	return response, nil
+	return strings.TrimSpace(response), nil
 }
 
-// sendMessageWithResponse sends a message and returns the response without printing
-func sendMessageWithResponse(msg string) (string, error) {
+// sendMessageInternal sends a message and optionally prints the response
+func sendMessageInternal(msg string, printResponse bool) (string, error) {
 	request, err := buildRequestPayload(msg)
 	if err != nil {
 		return "", err
@@ -443,7 +393,7 @@ func sendMessageWithResponse(msg string) (string, error) {
 		return "", fmt.Errorf("API server returned status %d: %s. The request may be invalid or the server is experiencing issues", resp.StatusCode, resp.Status)
 	}
 
-	var responseContent string
+	var responseBuilder strings.Builder
 	decoder := json.NewDecoder(resp.Body)
 	for {
 		var apiResp APIResponse
@@ -458,13 +408,21 @@ func sendMessageWithResponse(msg string) (string, error) {
 		}
 
 		if apiResp.Message != nil {
-			responseContent += apiResp.Message.Content
+			if printResponse {
+				fmt.Print(apiResp.Message.Content)
+			}
+			responseBuilder.WriteString(apiResp.Message.Content)
 		}
 	}
+	if printResponse {
+		fmt.Println()
+	}
+
+	responseContent := responseBuilder.String()
 
 	// Add user message and assistant response to history
 	chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
 	chatHistory = append(chatHistory, Message{Role: "assistant", Content: responseContent})
 
-	return strings.TrimSpace(responseContent), nil
+	return responseContent, nil
 }
