@@ -1,11 +1,7 @@
 package api
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"runtime"
 	"strings"
@@ -156,145 +152,6 @@ func ProcessMessage(msg string) error {
 	return nil
 }
 
-func modelExists(models []tagsModel, modelName string) bool {
-	modelName = strings.TrimSpace(modelName)
-	if modelName == "" {
-		return false
-	}
-
-	modelNameHasTag := strings.Contains(modelName, ":")
-	modelNameBase := strings.Split(modelName, ":")[0]
-
-	for _, model := range models {
-		name := strings.TrimSpace(model.Name)
-		if name == "" {
-			continue
-		}
-		if strings.EqualFold(name, modelName) {
-			return true
-		}
-		if !modelNameHasTag {
-			modelBase := strings.Split(name, ":")[0]
-			if strings.EqualFold(modelBase, modelNameBase) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// Function to check if the model exists and pull it if necessary
-func checkAndPullIfRequired() error {
-	host := viper.GetString("host")
-	port := viper.GetInt("port")
-	if host == "" {
-		return fmt.Errorf("configuration error: host is not set")
-	}
-	if port <= 0 {
-		return fmt.Errorf("configuration error: port is invalid (%d)", port)
-	}
-
-	url := fmt.Sprintf("http://%s:%d/api/tags", host, port)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("API server returned status %d: %s. Please check server configuration", resp.StatusCode, resp.Status)
-	}
-
-	var tagsResponse tagsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tagsResponse); err != nil {
-		return fmt.Errorf("failed to decode API response: %w. The server may be returning invalid data", err)
-	}
-
-	modelName := viper.GetString("model")
-	if modelName == "" {
-		return fmt.Errorf("configuration error: model name is not set")
-	}
-
-	if modelExists(tagsResponse.Models, modelName) {
-		return nil
-	}
-
-	fmt.Printf("Model %s not found, pulling...\n", modelName)
-	return pullModel()
-}
-
-// Pull the model using a progress bar
-func pullModel() error {
-	host := viper.GetString("host")
-	port := viper.GetInt("port")
-	modelName := viper.GetString("model")
-	if modelName == "" {
-		return fmt.Errorf("configuration error: model name is not set")
-	}
-
-	pullURL := fmt.Sprintf("http://%s:%d/api/pull", host, port)
-	pullDataBytes, err := json.Marshal(map[string]string{"name": modelName})
-	if err != nil {
-		return fmt.Errorf("failed to prepare pull request: %w", err)
-	}
-
-	resp, err := http.Post(pullURL, "application/json", bytes.NewBuffer(pullDataBytes))
-	if err != nil {
-		return fmt.Errorf("failed to connect to API server to pull model '%s': %w. Please ensure the server is running", modelName, err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		// Try to read error message from response
-		body, _ := io.ReadAll(resp.Body)
-		bodyStr := strings.TrimSpace(string(body))
-		if bodyStr != "" {
-			return fmt.Errorf("failed to pull model '%s': API returned status %d: %s. Response: %s", modelName, resp.StatusCode, resp.Status, bodyStr)
-		}
-		return fmt.Errorf("failed to pull model '%s': API returned status %d: %s. The model may not exist or the server encountered an error", modelName, resp.StatusCode, resp.Status)
-	}
-
-	model := &ProgressModel{progress: progress.New(progress.WithWidth(50))}
-	p := tea.NewProgram(model)
-
-	go func() {
-		decoder := json.NewDecoder(resp.Body)
-		for {
-			var pullResponse struct {
-				Completed int64 `json:"completed"`
-				Total     int64 `json:"total"`
-			}
-			if err := decoder.Decode(&pullResponse); err != nil {
-				if err != io.EOF {
-					fmt.Fprintf(os.Stderr, "Warning: error decoding pull progress: %v\n", err)
-				}
-				break
-			}
-			p.Send(struct {
-				completed int64
-				total     int64
-			}{pullResponse.Completed, pullResponse.Total})
-		}
-		p.Send("done")
-	}()
-
-	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("error running progress UI: %v", err)
-	}
-
-	return nil
-}
-
 // buildRequestPayload builds the API request payload with system and history messages
 func buildRequestPayload(userMessage string) (APIRequest, error) {
 	systemRole := viper.GetString("systemrole")
@@ -322,11 +179,6 @@ func buildRequestPayload(userMessage string) (APIRequest, error) {
 		Messages: messages,
 		Stream:   true,
 	}, nil
-}
-
-// Send a message to the API
-func sendMessage(msg string) (string, error) {
-	return sendMessageInternal(msg, true)
 }
 
 // ProcessMessageWithResponse processes a message and returns the response without printing it
@@ -362,67 +214,4 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 		_ = writeCache(cacheKey, response)
 	}
 	return strings.TrimSpace(response), nil
-}
-
-// sendMessageInternal sends a message and optionally prints the response
-func sendMessageInternal(msg string, printResponse bool) (string, error) {
-	request, err := buildRequestPayload(msg)
-	if err != nil {
-		return "", err
-	}
-
-	requestBody, err := json.Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal JSON request: %v", err)
-	}
-
-	host := viper.GetString("host")
-	port := viper.GetInt("port")
-	url := fmt.Sprintf("http://%s:%d/api/chat", host, port)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API server returned status %d: %s. The request may be invalid or the server is experiencing issues", resp.StatusCode, resp.Status)
-	}
-
-	var responseBuilder strings.Builder
-	decoder := json.NewDecoder(resp.Body)
-	for {
-		var apiResp APIResponse
-		if err := decoder.Decode(&apiResp); err != nil {
-			if err == io.EOF {
-				break
-			}
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				break
-			}
-			return "", fmt.Errorf("failed to decode API response: %w. The server may be returning invalid or incomplete data", err)
-		}
-
-		if apiResp.Message != nil {
-			if printResponse {
-				fmt.Print(apiResp.Message.Content)
-			}
-			responseBuilder.WriteString(apiResp.Message.Content)
-		}
-	}
-	if printResponse {
-		fmt.Println()
-	}
-
-	responseContent := responseBuilder.String()
-
-	// Add user message and assistant response to history
-	chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
-	chatHistory = append(chatHistory, Message{Role: "assistant", Content: responseContent})
-
-	return responseContent, nil
 }
