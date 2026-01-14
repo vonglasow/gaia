@@ -168,11 +168,30 @@ func checkAndPullIfRequired() error {
 	}
 
 	modelName := viper.GetString("model")
+	if modelName == "" {
+		return fmt.Errorf("configuration error: model name is not set")
+	}
+
+	// Check if exact match exists (case-insensitive comparison)
 	for _, model := range tagsResponse.Models {
-		if strings.Split(model.Name, ":")[0] == modelName {
+		if strings.EqualFold(model.Name, modelName) {
 			return nil
 		}
 	}
+
+	// If model name contains a tag (e.g., "mistral:7B"), also check if base model exists
+	// This handles cases where user wants a specific tag but only base model is available
+	if strings.Contains(modelName, ":") {
+		modelNameBase := strings.Split(modelName, ":")[0]
+		for _, model := range tagsResponse.Models {
+			modelBase := strings.Split(model.Name, ":")[0]
+			if strings.EqualFold(modelBase, modelNameBase) {
+				// Base model exists but with different tag - we need to pull the specific tag
+				break
+			}
+		}
+	}
+
 	fmt.Printf("Model %s not found, pulling...\n", modelName)
 	return pullModel()
 }
@@ -203,7 +222,13 @@ func pullModel() error {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("API server returned status %d while pulling model '%s': %s", resp.StatusCode, modelName, resp.Status)
+		// Try to read error message from response
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := strings.TrimSpace(string(body))
+		if bodyStr != "" {
+			return fmt.Errorf("failed to pull model '%s': API returned status %d: %s. Response: %s", modelName, resp.StatusCode, resp.Status, bodyStr)
+		}
+		return fmt.Errorf("failed to pull model '%s': API returned status %d: %s. The model may not exist or the server encountered an error", modelName, resp.StatusCode, resp.Status)
 	}
 
 	model := &ProgressModel{progress: progress.New(progress.WithWidth(50))}

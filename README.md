@@ -8,7 +8,6 @@
 ![100% Local AI](https://img.shields.io/badge/100%25%20Local-AI-success)
 ![Works Offline](https://img.shields.io/badge/Works-Offline-orange)
 
-
 Gaia is a command-line interface (CLI) tool that provides a convenient way to
 interact with language models through a local API. It features a beautiful
 terminal UI, configuration management, and support for different interaction
@@ -41,9 +40,10 @@ go build
 ### Using Homebrew (recommended 🍺)
 
 ```sh
-brew tap vonglasow/gaia
+brew tap vonglasow/tap
 brew install gaia
 ```
+
 #### Update
 
 ```sh
@@ -170,5 +170,6 @@ This project is licensed under the terms specified in the LICENSE file.
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 Please ensure:
+
 - Code is formatted and linted
 - Tests are added or updated
