@@ -25,12 +25,10 @@ var RootCmd = &cobra.Command{
 	Use:   "gaia",
 	Short: "Gaia CLI",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		path := cmd.CommandPath()
-		if strings.HasSuffix(path, "config create") {
-			return nil
-		}
-		if err := config.InitConfig(); err != nil {
-			return fmt.Errorf("init config: %w", err)
+		if !strings.HasSuffix(cmd.CommandPath(), "config create") {
+			if err := config.InitConfig(); err != nil {
+				return fmt.Errorf("init config: %w", err)
+			}
 		}
 		return nil
 	},
@@ -45,8 +43,7 @@ var ListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List configuration settings",
 	Run: func(cmd *cobra.Command, args []string) {
-		keys := make([]string, 0, len(viper.AllKeys()))
-		keys = append(keys, viper.AllKeys()...)
+		keys := viper.AllKeys()
 		sort.Strings(keys)
 		for _, key := range keys {
 			fmt.Printf("%s: %v\n", key, viper.Get(key))
@@ -70,9 +67,12 @@ var SetCmd = &cobra.Command{
 	Use:   "set [key] [value]",
 	Short: "Set configuration setting",
 	Args:  cobra.ExactArgs(2),
-	Run: func(cmd *cobra.Command, args []string) {
-		config.SetConfigString(args[0], args[1])
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := config.SetConfigString(args[0], args[1]); err != nil {
+			return err
+		}
 		fmt.Println("Config setting updated", args[0], "to", args[1])
+		return nil
 	},
 }
 
@@ -80,15 +80,19 @@ var GetCmd = &cobra.Command{
 	Use:   "get [key]",
 	Short: "Get configuration setting",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(viper.GetString(args[0]))
+	RunE: func(cmd *cobra.Command, args []string) error {
+		key := args[0]
+		if !viper.IsSet(key) {
+			return fmt.Errorf("configuration key '%s' is not set. Use 'gaia config list' to see available keys", key)
+		}
+		fmt.Println(viper.GetString(key))
+		return nil
 	},
 }
 
 var PathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "Get configuration path",
-	Args:  cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println(config.CfgFile)
 	},
@@ -99,13 +103,19 @@ var AskCmd = &cobra.Command{
 	Short: "Ask to a model",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		msg := ""
-		msg += readStdin()
+		msg := readStdin()
 		if len(args) > 0 {
-			msg += " " + args[0]
+			if msg != "" {
+				msg += " "
+			}
+			msg += args[0]
+		}
+		if strings.TrimSpace(msg) == "" {
+			fmt.Fprintf(os.Stderr, "Error: no message provided. Please provide a message as an argument or via stdin.\n")
+			return
 		}
 		if err := api.ProcessMessage(msg); err != nil {
-			fmt.Println(err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
 	},
 }
@@ -113,7 +123,6 @@ var AskCmd = &cobra.Command{
 var VersionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version information",
-	Args:  cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("Gaia %s, commit %s, built at %s\n", version, commitSHA, buildDate)
 	},
@@ -146,7 +155,8 @@ var ChatCmd = &cobra.Command{
 			}
 
 			if err := api.ProcessMessage(input); err != nil {
-				fmt.Println("Error processing message:", err)
+				fmt.Fprintf(os.Stderr, "Error processing message: %v\n", err)
+				fmt.Println("You can continue chatting or type 'exit' to end the session.")
 			}
 			fmt.Println("----------------------------------------")
 		}
@@ -154,14 +164,23 @@ var ChatCmd = &cobra.Command{
 }
 
 func readStdin() string {
-	var stdinLines string
-	stat, _ := os.Stdin.Stat()
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		// If we can't stat stdin, assume it's not available and return empty
+		return ""
+	}
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		buf := make([]byte, 4096)
-		n, _ := os.Stdin.Read(buf)
-		stdinLines = string(buf[:n])
+		n, err := os.Stdin.Read(buf)
+		if err != nil && err != io.EOF {
+			// Log but don't fail - return what we got
+			fmt.Fprintf(os.Stderr, "Warning: error reading from stdin: %v\n", err)
+		}
+		if n > 0 {
+			return strings.TrimSpace(string(buf[:n]))
+		}
 	}
-	return strings.TrimSpace(stdinLines)
+	return ""
 }
 
 func init() {
@@ -178,8 +197,7 @@ func Execute() error {
 	ConfigCmd.AddCommand(ListCmd, SetCmd, GetCmd, PathCmd, CreateCmd)
 	AskCmd.Flags().StringP("role", "r", "", "Specify role code (default, describe, code)")
 	if err := viper.BindPFlag("systemrole", AskCmd.Flags().Lookup("role")); err != nil {
-		fmt.Printf("Error binding flag to Viper: %v\n", err)
-		return err
+		return fmt.Errorf("failed to bind role flag: %w", err)
 	}
 	RootCmd.AddCommand(ConfigCmd, VersionCmd, AskCmd, ChatCmd)
 	return RootCmd.Execute()

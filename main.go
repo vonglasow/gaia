@@ -6,8 +6,6 @@ import (
 	"os"
 )
 
-var ()
-
 func main() {
 	if err := commands.Execute(); err != nil {
 		fmt.Println(err)
