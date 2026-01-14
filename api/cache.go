@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -91,11 +92,14 @@ func buildCacheKey(msg string) (string, error) {
 		Messages:     request.Messages,
 	}
 
-	keyBytes, err := json.Marshal(payload)
-	if err != nil {
+	// Pre-allocate buffer for JSON encoding
+	var buf bytes.Buffer
+	buf.Grow(512) // Reasonable initial size
+	encoder := json.NewEncoder(&buf)
+	if err := encoder.Encode(payload); err != nil {
 		return "", fmt.Errorf("failed to encode cache key payload: %w", err)
 	}
-	sum := sha256.Sum256(keyBytes)
+	sum := sha256.Sum256(buf.Bytes())
 	return hex.EncodeToString(sum[:]), nil
 }
 
