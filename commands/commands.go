@@ -294,6 +294,16 @@ func CallReadStdinForTest() string {
 	return readStdin()
 }
 
+// resetTerminal resets the terminal state to fix issues after interactive commands like vim
+func resetTerminal() {
+	// Use stty sane to reset terminal to a known good state
+	resetCmd := exec.Command("stty", "sane")
+	resetCmd.Stdin = os.Stdin
+	resetCmd.Stdout = os.Stdout
+	resetCmd.Stderr = os.Stderr
+	_ = resetCmd.Run() // Ignore errors - if stty fails, terminal might not be a TTY
+}
+
 // executeExternalCommand runs an external command and returns its output
 func executeExternalCommand(command string) (string, error) {
 	parts := strings.Fields(command)
@@ -511,7 +521,11 @@ func executeToolAction(tool, action string, args []string) error {
 			cmd := exec.Command(parts[0], parts[1:]...)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
+			cmd.Stdin = os.Stdin // Required for interactive commands like vim
+			err = cmd.Run()
+			// Reset terminal state after interactive command (e.g., vim)
+			resetTerminal()
+			if err != nil {
 				return fmt.Errorf("failed to execute command '%s': %w", finalCmd, err)
 			}
 		} else {
@@ -528,7 +542,11 @@ func executeToolAction(tool, action string, args []string) error {
 			cmd := exec.Command(parts[0], parts[1:]...)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
+			cmd.Stdin = os.Stdin // Required for interactive commands
+			err = cmd.Run()
+			// Reset terminal state after command execution
+			resetTerminal()
+			if err != nil {
 				return fmt.Errorf("failed to execute command '%s': %w", finalCmd, err)
 			}
 		}
