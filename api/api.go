@@ -120,6 +120,53 @@ func ProcessMessage(msg string) error {
 	if strings.TrimSpace(msg) == "" {
 		return fmt.Errorf("message cannot be empty")
 	}
+
+	// Detect role for debug output (even when reading from cache)
+	debug := viper.GetBool("debug")
+	var detectionResult *DetectionResult
+	if viper.GetBool("auto_role.enabled") {
+		explicitRole := viper.GetString("systemrole")
+		if explicitRole == "" {
+			explicitRole = viper.GetString("role")
+		}
+		if explicitRole != "" {
+			detectionResult = &DetectionResult{
+				Role:   explicitRole,
+				Method: "explicit",
+				Reason: "role explicitly provided",
+			}
+		} else {
+			result, err := DetectRole(msg, false) // Don't double-print debug
+			if err == nil && result != nil {
+				detectionResult = result
+			} else {
+				detectionResult = &DetectionResult{
+					Role:   "default",
+					Method: "default",
+					Reason: "auto-role detection failed, using default",
+				}
+			}
+		}
+	} else {
+		explicitRole := viper.GetString("systemrole")
+		if explicitRole == "" {
+			explicitRole = viper.GetString("role")
+		}
+		if explicitRole != "" {
+			detectionResult = &DetectionResult{
+				Role:   explicitRole,
+				Method: "explicit",
+				Reason: "role explicitly provided",
+			}
+		} else {
+			detectionResult = &DetectionResult{
+				Role:   "default",
+				Method: "default",
+				Reason: "auto-role disabled, using default",
+			}
+		}
+	}
+
 	refreshCache := viper.GetBool("cache.refresh")
 	bypassCache := viper.GetBool("cache.bypass")
 	useCache := cacheEnabled() || refreshCache
@@ -130,6 +177,17 @@ func ProcessMessage(msg string) error {
 			cacheKey = key
 			if !bypassCache && !refreshCache {
 				if cached, ok, err := readCache(cacheKey); err == nil && ok {
+					if debug && detectionResult != nil {
+						fmt.Fprintf(os.Stderr, "[DEBUG] Using cached response\n")
+						fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
+						if detectionResult.Score > 0 {
+							fmt.Fprintf(os.Stderr, ", score: %.2f", detectionResult.Score)
+						}
+						if detectionResult.Reason != "" {
+							fmt.Fprintf(os.Stderr, ", reason: %s", detectionResult.Reason)
+						}
+						fmt.Fprintf(os.Stderr, ")\n")
+					}
 					fmt.Print(cached)
 					fmt.Println()
 					chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
@@ -139,6 +197,19 @@ func ProcessMessage(msg string) error {
 			}
 		}
 	}
+
+	// Display debug info before sending message (if not using cache or cache miss)
+	if debug && detectionResult != nil {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
+		if detectionResult.Score > 0 {
+			fmt.Fprintf(os.Stderr, ", score: %.2f", detectionResult.Score)
+		}
+		if detectionResult.Reason != "" {
+			fmt.Fprintf(os.Stderr, ", reason: %s", detectionResult.Reason)
+		}
+		fmt.Fprintf(os.Stderr, ")\n")
+	}
+
 	if err := checkAndPullIfRequired(); err != nil {
 		return err
 	}
@@ -158,6 +229,18 @@ func buildRequestPayload(userMessage string) (APIRequest, error) {
 	if systemRole == "" {
 		systemRole = viper.GetString("role")
 	}
+
+	// Auto-detect role if not explicitly set and auto-role is enabled
+	if systemRole == "" && viper.GetBool("auto_role.enabled") {
+		debug := viper.GetBool("debug")
+		detectionResult, err := DetectRole(userMessage, debug)
+		if err == nil && detectionResult != nil {
+			systemRole = detectionResult.Role
+		} else {
+			systemRole = "default"
+		}
+	}
+
 	if systemRole == "" {
 		systemRole = "default"
 	}
@@ -186,6 +269,53 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 	if strings.TrimSpace(msg) == "" {
 		return "", fmt.Errorf("message cannot be empty")
 	}
+
+	// Detect role for debug output (even when reading from cache)
+	debug := viper.GetBool("debug")
+	var detectionResult *DetectionResult
+	if viper.GetBool("auto_role.enabled") {
+		explicitRole := viper.GetString("systemrole")
+		if explicitRole == "" {
+			explicitRole = viper.GetString("role")
+		}
+		if explicitRole != "" {
+			detectionResult = &DetectionResult{
+				Role:   explicitRole,
+				Method: "explicit",
+				Reason: "role explicitly provided",
+			}
+		} else {
+			result, err := DetectRole(msg, false) // Don't double-print debug
+			if err == nil && result != nil {
+				detectionResult = result
+			} else {
+				detectionResult = &DetectionResult{
+					Role:   "default",
+					Method: "default",
+					Reason: "auto-role detection failed, using default",
+				}
+			}
+		}
+	} else {
+		explicitRole := viper.GetString("systemrole")
+		if explicitRole == "" {
+			explicitRole = viper.GetString("role")
+		}
+		if explicitRole != "" {
+			detectionResult = &DetectionResult{
+				Role:   explicitRole,
+				Method: "explicit",
+				Reason: "role explicitly provided",
+			}
+		} else {
+			detectionResult = &DetectionResult{
+				Role:   "default",
+				Method: "default",
+				Reason: "auto-role disabled, using default",
+			}
+		}
+	}
+
 	refreshCache := viper.GetBool("cache.refresh")
 	bypassCache := viper.GetBool("cache.bypass")
 	useCache := cacheEnabled() || refreshCache
@@ -196,6 +326,17 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 			cacheKey = key
 			if !bypassCache && !refreshCache {
 				if cached, ok, err := readCache(cacheKey); err == nil && ok {
+					if debug && detectionResult != nil {
+						fmt.Fprintf(os.Stderr, "[DEBUG] Using cached response\n")
+						fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
+						if detectionResult.Score > 0 {
+							fmt.Fprintf(os.Stderr, ", score: %.2f", detectionResult.Score)
+						}
+						if detectionResult.Reason != "" {
+							fmt.Fprintf(os.Stderr, ", reason: %s", detectionResult.Reason)
+						}
+						fmt.Fprintf(os.Stderr, ")\n")
+					}
 					chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
 					chatHistory = append(chatHistory, Message{Role: "assistant", Content: cached})
 					return strings.TrimSpace(cached), nil
@@ -203,6 +344,19 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 			}
 		}
 	}
+
+	// Display debug info before sending message (if not using cache or cache miss)
+	if debug && detectionResult != nil {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
+		if detectionResult.Score > 0 {
+			fmt.Fprintf(os.Stderr, ", score: %.2f", detectionResult.Score)
+		}
+		if detectionResult.Reason != "" {
+			fmt.Fprintf(os.Stderr, ", reason: %s", detectionResult.Reason)
+		}
+		fmt.Fprintf(os.Stderr, ")\n")
+	}
+
 	if err := checkAndPullIfRequired(); err != nil {
 		return "", err
 	}
