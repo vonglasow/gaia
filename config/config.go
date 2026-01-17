@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -17,6 +18,28 @@ var validKeys = map[string]bool{
 	"roles.default": true, "roles.describe": true, "roles.shell": true, "roles.code": true,
 	"roles.commit": true, "roles.branch": true,
 	"cache.enabled": true, "cache.dir": true,
+	"auto_role.enabled": true, "auto_role.mode": true,
+}
+
+// IsValidKey checks if a key is valid for configuration
+// This allows dynamic keys like auto_role.keywords.* and roles.*
+func IsValidKey(key string) bool {
+	// Check exact matches first
+	if validKeys[key] {
+		return true
+	}
+
+	// Allow any roles.* key
+	if strings.HasPrefix(key, "roles.") {
+		return true
+	}
+
+	// Allow any auto_role.keywords.* key
+	if strings.HasPrefix(key, "auto_role.keywords.") {
+		return true
+	}
+
+	return false
 }
 
 func setDefaults() {
@@ -44,6 +67,38 @@ func setDefaults() {
 	viper.SetDefault("tools.git.branch.context_command", "git diff")
 	viper.SetDefault("tools.git.branch.role", "branch")
 	viper.SetDefault("tools.git.branch.execute_command", "git checkout -b {response}")
+	// Auto-role detection defaults
+	viper.SetDefault("auto_role.enabled", true)
+	viper.SetDefault("auto_role.mode", "hybrid") // off | heuristic | hybrid
+
+	// Default keywords for role detection
+	viper.SetDefault("auto_role.keywords.shell", []string{
+		"command", "run", "execute", "terminal", "bash", "zsh", "sh", "shell",
+		"cd", "ls", "grep", "find", "mkdir", "rm", "cp", "mv", "cat", "echo",
+		"sudo", "chmod", "chown", "ps", "kill", "pkill", "systemctl", "service",
+		"install", "uninstall", "package", "apt", "yum", "brew", "pip", "npm",
+	})
+	viper.SetDefault("auto_role.keywords.code", []string{
+		"function", "class", "def", "import", "return", "if", "else", "for", "while",
+		"variable", "array", "list", "dict", "string", "int", "bool", "type",
+		"python", "javascript", "java", "go", "rust", "c++", "c#", "php", "ruby",
+		"code", "programming", "algorithm", "api", "endpoint", "json", "xml",
+		"database", "sql", "query", "table", "schema", "migration",
+	})
+	viper.SetDefault("auto_role.keywords.describe", []string{
+		"what", "what does", "explain", "describe", "meaning", "definition",
+		"how does", "tell me about", "what is", "what are", "help me understand",
+	})
+	viper.SetDefault("auto_role.keywords.commit", []string{
+		"commit message", "generate commit", "create commit", "write commit", "make commit",
+		"conventional commit", "changelog", "commit msg", "git commit message",
+		"commit", // Keep as fallback but lower priority
+	})
+	viper.SetDefault("auto_role.keywords.branch", []string{
+		"create branch", "new branch", "make branch", "generate branch", "branch name",
+		"git branch", "checkout branch", "switch branch",
+		"branch", // Keep as fallback but lower priority
+	})
 }
 
 func InitConfig() error {
@@ -85,8 +140,8 @@ func InitConfig() error {
 }
 
 func SetConfigString(key, value string) error {
-	if !validKeys[key] {
-		return fmt.Errorf("invalid config key '%s'. Valid keys are: model, host, port, cache.enabled, cache.dir, roles.default, roles.describe, roles.shell, roles.code, roles.commit, roles.branch", key)
+	if !IsValidKey(key) {
+		return fmt.Errorf("invalid config key '%s'. Valid keys include: model, host, port, cache.enabled, cache.dir, roles.*, auto_role.enabled, auto_role.mode, auto_role.keywords.*", key)
 	}
 	viper.Set(key, value)
 	if err := viper.WriteConfig(); err != nil {

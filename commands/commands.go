@@ -285,6 +285,10 @@ func Execute() error {
 	if err := viper.BindPFlag("cache.refresh", RootCmd.PersistentFlags().Lookup("refresh-cache")); err != nil {
 		return fmt.Errorf("failed to bind refresh-cache flag: %w", err)
 	}
+	RootCmd.PersistentFlags().Bool("debug", false, "Enable debug output (shows role detection info)")
+	if err := viper.BindPFlag("debug", RootCmd.PersistentFlags().Lookup("debug")); err != nil {
+		return fmt.Errorf("failed to bind debug flag: %w", err)
+	}
 	RootCmd.AddCommand(ConfigCmd, CacheCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd)
 	return RootCmd.Execute()
 }
