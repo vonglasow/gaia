@@ -40,6 +40,11 @@ func GetProvider() (Provider, error) {
 		return NewOpenAIProvider(), nil
 	}
 
+	// Detect Mistral provider
+	if strings.Contains(host, "api.mistral.ai") && port == 443 {
+		return NewMistralProvider(), nil
+	}
+
 	// Default to Ollama provider
 	return NewOllamaProvider(), nil
 }
