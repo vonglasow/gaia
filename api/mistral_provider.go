@@ -122,7 +122,7 @@ func (p *MistralProvider) SendMessage(request APIRequest, printResponse bool) (s
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("Mistral API error: %s - %s", resp.Status, string(errBody))
+		return "", fmt.Errorf("mistral API error: %s - %s", resp.Status, string(errBody))
 	}
 
 	var content string
@@ -223,7 +223,7 @@ func (p *MistralProvider) handleNonStreamingResponse(body io.Reader, printRespon
 	}
 
 	if len(mistralResp.Choices) == 0 {
-		return "", fmt.Errorf("Mistral response has no choices")
+		return "", fmt.Errorf("mistral response has no choices")
 	}
 
 	content := mistralResp.Choices[0].Message.Content
