@@ -7,7 +7,7 @@ version: 2
 updates:
   - package-ecosystem: "gomod"
     directory: "/"
-    target-branch: "dev" # The branch to which Dependabot will propose updates
+    target-branch: "main" # The branch to which Dependabot will propose updates
     schedule:
       interval: "weekly"
       day: "monday"
