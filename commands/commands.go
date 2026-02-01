@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -289,7 +290,7 @@ func Execute() error {
 	if err := viper.BindPFlag("debug", RootCmd.PersistentFlags().Lookup("debug")); err != nil {
 		return fmt.Errorf("failed to bind debug flag: %w", err)
 	}
-	RootCmd.AddCommand(ConfigCmd, CacheCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd)
+	RootCmd.AddCommand(ConfigCmd, CacheCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd, InvestigateCmd)
 	return RootCmd.Execute()
 }
 
@@ -308,27 +309,45 @@ func resetTerminal() {
 	_ = resetCmd.Run() // Ignore errors - if stty fails, terminal might not be a TTY
 }
 
-// executeExternalCommand runs an external command and returns its output
+// executeExternalCommand runs an external command and returns its output (stdout). Stderr is ignored for backward compatibility.
 func executeExternalCommand(command string) (string, error) {
-	parts := strings.Fields(command)
-	if len(parts) == 0 {
-		return "", fmt.Errorf("empty command")
+	stdout, stderr, err := ExecuteExternalCommandWithContext(context.TODO(), command)
+	if err != nil && stderr != "" {
+		return stdout, fmt.Errorf("%w (stderr: %s)", err, stderr)
 	}
+	return stdout, err
+}
 
-	cmd := exec.Command(parts[0], parts[1:]...)
-	output, err := cmd.Output()
+// ExecuteExternalCommandWithContext runs a shell command with optional context (for timeout/cancel).
+// If ctx is nil, no timeout is applied. Returns stdout, stderr, and error.
+// Used by the operator (investigate) to run run_cmd with a timeout.
+func ExecuteExternalCommandWithContext(ctx context.Context, command string) (stdout, stderr string, err error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return "", "", fmt.Errorf("empty command")
+	}
+	var cmd *exec.Cmd
+	if ctx != nil {
+		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+	} else {
+		cmd = exec.Command("sh", "-c", command)
+	}
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err = cmd.Run()
+	stdoutStr := strings.TrimSpace(outBuf.String())
+	stderrStr := strings.TrimSpace(errBuf.String())
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			// Some commands return non-zero exit codes for valid reasons (e.g., git diff with no changes)
 			if exitErr.ExitCode() == 1 {
-				return strings.TrimSpace(string(output)), nil
+				return stdoutStr, stderrStr, nil
 			}
-			return "", fmt.Errorf("command failed with exit code %d: %w", exitErr.ExitCode(), err)
+			return stdoutStr, stderrStr, fmt.Errorf("command failed with exit code %d: %w", exitErr.ExitCode(), err)
 		}
-		return "", fmt.Errorf("failed to execute command: %w", err)
+		return stdoutStr, stderrStr, fmt.Errorf("failed to execute command: %w", err)
 	}
-
-	return strings.TrimSpace(string(output)), nil
+	return stdoutStr, stderrStr, nil
 }
 
 // getToolActionConfig retrieves the configuration for a specific tool action

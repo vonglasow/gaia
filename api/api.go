@@ -210,7 +210,7 @@ func ProcessMessage(msg string) error {
 		fmt.Fprintf(os.Stderr, ")\n")
 	}
 
-	if err := checkAndPullIfRequired(); err != nil {
+	if err := CheckAndPullIfRequired(); err != nil {
 		return err
 	}
 	response, err := sendMessage(msg)
@@ -357,7 +357,7 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 		fmt.Fprintf(os.Stderr, ")\n")
 	}
 
-	if err := checkAndPullIfRequired(); err != nil {
+	if err := CheckAndPullIfRequired(); err != nil {
 		return "", err
 	}
 	response, err := sendMessageInternal(msg, false)
@@ -368,4 +368,17 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 		_ = writeCache(cacheKey, response)
 	}
 	return strings.TrimSpace(response), nil
+}
+
+// SendRequestNoStream sends a pre-built API request without streaming.
+// Used by the operator planner. Ensures the model is available (e.g. pulls Ollama model if needed).
+func SendRequestNoStream(request APIRequest) (string, error) {
+	if err := CheckAndPullIfRequired(); err != nil {
+		return "", err
+	}
+	provider, err := GetProvider()
+	if err != nil {
+		return "", err
+	}
+	return provider.SendMessage(request, false)
 }

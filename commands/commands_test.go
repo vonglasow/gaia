@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -220,4 +221,22 @@ func TestReadStdin_EmptyPipe(t *testing.T) {
 
 	out := commands.CallReadStdinForTest()
 	assert.Equal(t, "", out)
+}
+
+func TestExecuteExternalCommandWithContext(t *testing.T) {
+	stdout, stderr, err := commands.ExecuteExternalCommandWithContext(context.Background(), "echo hello")
+	require.NoError(t, err)
+	assert.Equal(t, "hello", stdout)
+	assert.Equal(t, "", stderr)
+}
+
+func TestExecuteExternalCommandWithContext_emptyCommand(t *testing.T) {
+	_, _, err := commands.ExecuteExternalCommandWithContext(context.Background(), "   ")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty")
+}
+
+func TestInvestigateCmd_Structure(t *testing.T) {
+	assert.NotNil(t, commands.InvestigateCmd)
+	assert.Contains(t, commands.InvestigateCmd.Use, "investigate")
 }

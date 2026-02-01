@@ -49,8 +49,13 @@ func GetProvider() (Provider, error) {
 	return NewOllamaProvider(), nil
 }
 
-// checkAndPullIfRequired checks if the model exists and pulls it if necessary
-func checkAndPullIfRequired() error {
+// CheckAndPullIfRequired checks if the model exists and pulls it if necessary (e.g. for Ollama).
+// Exported for use by the operator and other callers that send custom requests.
+func CheckAndPullIfRequired() error {
+	return checkAndPullIfRequiredInternal()
+}
+
+func checkAndPullIfRequiredInternal() error {
 	provider, err := GetProvider()
 	if err != nil {
 		return err

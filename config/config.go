@@ -39,6 +39,11 @@ func IsValidKey(key string) bool {
 		return true
 	}
 
+	// Allow any operator.* key
+	if strings.HasPrefix(key, "operator.") {
+		return true
+	}
+
 	return false
 }
 
@@ -99,6 +104,15 @@ func setDefaults() {
 		"git branch", "checkout branch", "switch branch",
 		"branch", // Keep as fallback but lower priority
 	})
+
+	// Operator (investigate) defaults
+	viper.SetDefault("operator.max_steps", 10)
+	viper.SetDefault("operator.confirm_medium_risk", true)
+	viper.SetDefault("operator.dry_run", false)
+	viper.SetDefault("operator.allowlist", []string{})
+	viper.SetDefault("operator.denylist", []string{"rm -rf", "sudo", "mkfs", "> /dev/sd"})
+	viper.SetDefault("operator.output_max_bytes", 4096)
+	viper.SetDefault("operator.command_timeout_seconds", 30)
 }
 
 func InitConfig() error {

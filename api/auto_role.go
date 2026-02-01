@@ -358,7 +358,7 @@ Role:`, rolesList, message)
 	}
 
 	// Check if model exists before sending
-	if err := checkAndPullIfRequired(); err != nil {
+	if err := CheckAndPullIfRequired(); err != nil {
 		return "", "", fmt.Errorf("model check failed: %w", err)
 	}
 
