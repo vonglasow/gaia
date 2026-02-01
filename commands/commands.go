@@ -322,6 +322,7 @@ func executeExternalCommand(command string) (string, error) {
 // ExecuteExternalCommandWithContext runs a shell command with optional context (for timeout/cancel).
 // If ctx is nil, no timeout is applied. Returns stdout, stderr, and error.
 // Used by the operator (investigate) to run run_cmd with a timeout.
+// Shell is required for operator commands (pipes, redirects). Use only in trusted environments.
 func ExecuteExternalCommandWithContext(ctx context.Context, command string) (stdout, stderr string, err error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
@@ -329,8 +330,10 @@ func ExecuteExternalCommandWithContext(ctx context.Context, command string) (std
 	}
 	var cmd *exec.Cmd
 	if ctx != nil {
+		// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 		cmd = exec.CommandContext(ctx, "sh", "-c", command)
 	} else {
+		// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 		cmd = exec.Command("sh", "-c", command)
 	}
 	var outBuf, errBuf strings.Builder
@@ -349,6 +352,68 @@ func ExecuteExternalCommandWithContext(ctx context.Context, command string) (std
 		return stdoutStr, stderrStr, fmt.Errorf("failed to execute command: %w", err)
 	}
 	return stdoutStr, stderrStr, nil
+}
+
+// buildCommandArgs parses a template like "git checkout -b {response}" with replacements
+// and returns (executable, args) so each placeholder value is exactly one argument (no shell).
+// Placeholders: {file}, {response}, {output}.
+func buildCommandArgs(template string, replacements map[string]string) (name string, args []string, err error) {
+	type seg struct {
+		start int
+		end   int
+		key   string // placeholder key e.g. "{response}"; empty means literal
+	}
+	var segments []seg
+	placeholders := []string{"{file}", "{response}", "{output}"}
+	for _, p := range placeholders {
+		start := 0
+		for {
+			i := strings.Index(template[start:], p)
+			if i < 0 {
+				break
+			}
+			absStart := start + i
+			segments = append(segments, seg{absStart, absStart + len(p), p})
+			start = absStart + len(p)
+		}
+	}
+	if len(segments) == 0 {
+		// No placeholders: split whole template
+		parts := strings.Fields(template)
+		if len(parts) == 0 {
+			return "", nil, fmt.Errorf("invalid execute_command: empty")
+		}
+		return parts[0], parts[1:], nil
+	}
+	sort.Slice(segments, func(i, j int) bool { return segments[i].start < segments[j].start })
+	var argv []string
+	pos := 0
+	for _, s := range segments {
+		if s.start > pos {
+			lit := strings.TrimSpace(template[pos:s.start])
+			if lit != "" {
+				argv = append(argv, strings.Fields(lit)...)
+			}
+		}
+		if s.key != "" {
+			v, ok := replacements[s.key]
+			if !ok {
+				return "", nil, fmt.Errorf("missing replacement for placeholder %s", s.key)
+			}
+			argv = append(argv, v)
+		}
+		pos = s.end
+	}
+	if pos < len(template) {
+		lit := strings.TrimSpace(template[pos:])
+		if lit != "" {
+			argv = append(argv, strings.Fields(lit)...)
+		}
+	}
+	if len(argv) == 0 {
+		return "", nil, fmt.Errorf("invalid execute_command: empty")
+	}
+	return argv[0], argv[1:], nil
 }
 
 // getToolActionConfig retrieves the configuration for a specific tool action
@@ -536,18 +601,18 @@ func executeToolAction(tool, action string, args []string) error {
 				return fmt.Errorf("failed to close temporary file: %w", err)
 			}
 
-			// Replace {file} with the temporary file path
-			finalCmd := strings.ReplaceAll(executeCmd, "{file}", tmpFile.Name())
-			finalCmd = strings.ReplaceAll(finalCmd, "{response}", tmpFile.Name())
-			finalCmd = strings.ReplaceAll(finalCmd, "{output}", tmpFile.Name())
-
-			// Execute the command
-			parts := strings.Fields(finalCmd)
-			if len(parts) == 0 {
-				return fmt.Errorf("invalid execute_command in configuration")
+			// Build argv with placeholders as single args (no shell; executable from config)
+			replacements := map[string]string{
+				"{file}":     tmpFile.Name(),
+				"{response}": tmpFile.Name(),
+				"{output}":   tmpFile.Name(),
 			}
-
-			cmd := exec.Command(parts[0], parts[1:]...)
+			name, args, err := buildCommandArgs(executeCmd, replacements)
+			if err != nil {
+				return err
+			}
+			// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+			cmd := exec.Command(name, args...)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Stdin = os.Stdin // Required for interactive commands like vim
@@ -555,20 +620,21 @@ func executeToolAction(tool, action string, args []string) error {
 			// Reset terminal state after interactive command (e.g., vim)
 			resetTerminal()
 			if err != nil {
-				return fmt.Errorf("failed to execute command '%s': %w", finalCmd, err)
+				return fmt.Errorf("failed to execute command '%s': %w", executeCmd, err)
 			}
 		} else {
-			// Replace {response} placeholder with the AI response (for single-line commands)
-			finalCmd := strings.ReplaceAll(executeCmd, "{response}", strings.TrimSpace(response))
-			finalCmd = strings.ReplaceAll(finalCmd, "{output}", strings.TrimSpace(response))
-
-			// Execute the command
-			parts := strings.Fields(finalCmd)
-			if len(parts) == 0 {
-				return fmt.Errorf("invalid execute_command in configuration")
+			// Build argv with {response}/{output} as single arg (no shell; executable from config)
+			responseTrimmed := strings.TrimSpace(response)
+			replacements := map[string]string{
+				"{response}": responseTrimmed,
+				"{output}":   responseTrimmed,
 			}
-
-			cmd := exec.Command(parts[0], parts[1:]...)
+			name, args, err := buildCommandArgs(executeCmd, replacements)
+			if err != nil {
+				return err
+			}
+			// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+			cmd := exec.Command(name, args...)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Stdin = os.Stdin // Required for interactive commands
@@ -576,7 +642,7 @@ func executeToolAction(tool, action string, args []string) error {
 			// Reset terminal state after command execution
 			resetTerminal()
 			if err != nil {
-				return fmt.Errorf("failed to execute command '%s': %w", finalCmd, err)
+				return fmt.Errorf("failed to execute command '%s': %w", executeCmd, err)
 			}
 		}
 	} else {

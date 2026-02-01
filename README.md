@@ -518,7 +518,15 @@ go test -v ./...
 The project uses:
 - `go fmt` for formatting
 - `golangci-lint` for linting
+- `govulncheck` for vulnerability scanning of Go dependencies (run via pre-commit when Go files change)
+- `semgrep` for static analysis (run via pre-commit; uses `--config auto` from the Semgrep Registry)
 - `pre-commit` hooks for automated checks
+
+**Optional (for the govulncheck pre-commit hook):** install govulncheck so the local hook can run:
+
+```bash
+go install golang.org/x/vuln/cmd/govulncheck@latest
+```
 
 Run all checks:
 
