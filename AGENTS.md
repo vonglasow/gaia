@@ -28,6 +28,8 @@ Agent guide for the **gaia** repository.
 | Long commands           | If a command exceeds **5 minutes**, stop it, capture logs/output, and mention the timeout before retrying.          |
 | Dependencies            | Do not add or upgrade dependencies without confirming fit, maintenance, and security posture.                       |
 | Final handoff           | Summarize changes by file, mention checks run, note uncertainties/TODOs.                                            |
+| Update README.md        | Update the README.md by adding new informations about the feature                                                   |
+
 
 ---
 
@@ -42,6 +44,7 @@ This is a Go CLI project with a small, clear structure (from the repo root):
 - `main.go` — application entry point
 - `.pre-commit-config.yaml` — formatting/lint automation
 - `.goreleaser.yaml` — release packaging config
+- `README.md` - Documentation
 - `go.mod` / `go.sum` — Go modules
 
 (If new directories appear, do not assume they are wired into CI without checking.)

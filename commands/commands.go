@@ -14,6 +14,7 @@ import (
 	"gaia/api"
 	"gaia/config"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -365,15 +366,18 @@ func getToolActionConfig(tool, action string) (map[string]interface{}, error) {
 	return config, nil
 }
 
-// promptForContext allows user to add or modify context
+// promptForContext allows user to add or modify context.
+// Uses Bubble Tea TUI when stdout is a terminal, otherwise falls back to line-based input.
 func promptForContext(initialContext string) (string, error) {
+	if isatty.IsTerminal(os.Stdout.Fd()) {
+		return runContextPromptTUI(initialContext)
+	}
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println("\n--- Current Context ---")
 	if initialContext == "" {
 		fmt.Println("(no context)")
 	} else {
-		// Show context with line numbers or truncate if too long
 		lines := strings.Split(initialContext, "\n")
 		if len(lines) > 20 {
 			fmt.Println(strings.Join(lines[:20], "\n"))
@@ -403,7 +407,6 @@ func promptForContext(initialContext string) (string, error) {
 		return initialContext, nil
 	}
 
-	// Check if user wants to append
 	if strings.HasPrefix(input, "+") {
 		appendText := strings.TrimPrefix(input, "+")
 		if initialContext != "" {
@@ -412,12 +415,15 @@ func promptForContext(initialContext string) (string, error) {
 		return strings.TrimSpace(appendText), nil
 	}
 
-	// Replace context
 	return input, nil
 }
 
-// promptForConfirmation asks user to confirm before executing
+// promptForConfirmation asks user to confirm before executing.
+// Uses Bubble Tea TUI when stdout is a terminal, otherwise falls back to line-based input.
 func promptForConfirmation(message string) (bool, error) {
+	if isatty.IsTerminal(os.Stdout.Fd()) {
+		return runConfirmationPromptTUI(message, "Confirm")
+	}
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println("\n--- Generated Message ---")
