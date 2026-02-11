@@ -247,6 +247,24 @@ func TestResolveProvider_Boundaries(t *testing.T) {
 			expected: "ollama",
 		},
 		{
+			name:     "mistral with exact match",
+			host:     "api.mistral.ai",
+			port:     443,
+			expected: "mistral",
+		},
+		{
+			name:     "mistral with whitespace",
+			host:     "  api.mistral.ai  ",
+			port:     443,
+			expected: "mistral",
+		},
+		{
+			name:     "mistral wrong port",
+			host:     "api.mistral.ai",
+			port:     8080,
+			expected: "ollama",
+		},
+		{
 			name:     "localhost",
 			host:     "localhost",
 			port:     11434,

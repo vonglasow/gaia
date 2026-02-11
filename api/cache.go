@@ -51,6 +51,9 @@ func resolveProvider() string {
 	if strings.Contains(host, "api.openai.com") && port == 443 {
 		return "openai"
 	}
+	if strings.Contains(host, "api.mistral.ai") && port == 443 {
+		return "mistral"
+	}
 	return "ollama"
 }
 
