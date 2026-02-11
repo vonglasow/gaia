@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -45,7 +46,7 @@ type mistralStreamResponse struct {
 // NewMistralProvider creates a new Mistral provider
 func NewMistralProvider() *MistralProvider {
 	return &MistralProvider{
-		client: &http.Client{},
+		client: &http.Client{Timeout: 120 * time.Second},
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,11 +26,15 @@ type tagsResponse struct {
 }
 
 // OllamaProvider implements the Provider interface for Ollama
-type OllamaProvider struct{}
+type OllamaProvider struct {
+	client *http.Client
+}
 
 // NewOllamaProvider creates a new Ollama provider
 func NewOllamaProvider() *OllamaProvider {
-	return &OllamaProvider{}
+	return &OllamaProvider{
+		client: &http.Client{Timeout: 600 * time.Second}, // 10 min for pull/chat
+	}
 }
 
 // GetProviderName returns the name of the provider
@@ -49,7 +54,7 @@ func (p *OllamaProvider) CheckModelExists() (bool, error) {
 
 	url := fmt.Sprintf("http://%s:%d/api/tags", host, port)
 
-	resp, err := http.Get(url)
+	resp, err := p.client.Get(url)
 	if err != nil {
 		return false, fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
 	}
@@ -86,7 +91,7 @@ func (p *OllamaProvider) PullModel() error {
 		return fmt.Errorf("failed to prepare pull request: %w", err)
 	}
 
-	resp, err := http.Post(pullURL, "application/json", bytes.NewBuffer(pullDataBytes))
+	resp, err := p.client.Post(pullURL, "application/json", bytes.NewBuffer(pullDataBytes))
 	if err != nil {
 		return fmt.Errorf("failed to connect to API server to pull model '%s': %w. Please ensure the server is running", modelName, err)
 	}
@@ -147,7 +152,7 @@ func (p *OllamaProvider) SendMessage(request APIRequest, printResponse bool) (st
 	host := viper.GetString("host")
 	port := viper.GetInt("port")
 	url := fmt.Sprintf("http://%s:%d/api/chat", host, port)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
+	resp, err := p.client.Post(url, "application/json", bytes.NewBuffer(requestBody))
 	if err != nil {
 		return "", fmt.Errorf("failed to connect to API server at %s:%d: %w. Please ensure the server is running", host, port, err)
 	}

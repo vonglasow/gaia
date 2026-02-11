@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -45,7 +46,7 @@ type openAIStreamResponse struct {
 // NewOpenAIProvider creates a new OpenAI provider
 func NewOpenAIProvider() *OpenAIProvider {
 	return &OpenAIProvider{
-		client: &http.Client{},
+		client: &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
