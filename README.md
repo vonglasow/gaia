@@ -32,7 +32,7 @@ and support for different interaction modes.
 
 ### Prerequisites
 
-- Go 1.22.2 or later
+- Go 1.26 or later
 - A running instance of a compatible language model API (e.g., Ollama) or OpenAI API key
 
 ### Building from Source

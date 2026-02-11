@@ -57,7 +57,7 @@ This is a Go CLI project with a small, clear structure (from the repo root):
 
 The CI workflow runs on push + PR and enforces:
 
-- Go version: **1.25** (matrix)
+- Go version: **1.26** (matrix)
 - `golangci-lint` via GitHub Action
 - `pre-commit-ci/lite-action`
 - tests: `go test -v ./...`
