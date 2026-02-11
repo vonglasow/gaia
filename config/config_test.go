@@ -90,13 +90,77 @@ func TestSetConfigString_AllValidKeys(t *testing.T) {
 		"model", "host", "port",
 		"roles.default", "roles.describe", "roles.shell", "roles.code",
 		"roles.commit", "roles.branch",
-		"cache.enabled", "cache.dir",
+		"cache.enabled", "cache.dir", "cache.bypass", "cache.refresh",
+		"debug",
+		"tools.git.commit.role", "tools.git.branch.execute_command",
+		"operator.max_steps",
 	}
 
 	for _, key := range validKeys {
 		err := config.SetConfigString(key, "test-value")
 		require.NoError(t, err, "failed to set valid key: %s", key)
 	}
+}
+
+func TestIsValidKey(t *testing.T) {
+	tests := []struct {
+		key      string
+		valid    bool
+		desc     string
+	}{
+		// Exact keys
+		{"model", true, "model"},
+		{"debug", true, "debug"},
+		{"cache.bypass", true, "cache.bypass"},
+		{"cache.refresh", true, "cache.refresh"},
+		// roles.*
+		{"roles.default", true, "roles.default"},
+		{"roles.custom", true, "roles.custom"},
+		// auto_role.keywords.*
+		{"auto_role.keywords.shell", true, "auto_role.keywords.shell"},
+		{"auto_role.keywords.custom", true, "auto_role.keywords.custom"},
+		// operator.*
+		{"operator.max_steps", true, "operator.max_steps"},
+		{"operator.denylist", true, "operator.denylist"},
+		// tools.*
+		{"tools.git.commit.role", true, "tools.git.commit.role"},
+		{"tools.git.branch.execute_command", true, "tools.git.branch.execute_command"},
+		{"tools.other.action.field", true, "tools.other.action.field"},
+		// Invalid
+		{"invalid_key", false, "invalid_key"},
+		{"unknown.prefix.key", false, "unknown prefix"},
+		{"", false, "empty"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := config.IsValidKey(tt.key)
+			assert.Equal(t, tt.valid, got, "IsValidKey(%q)", tt.key)
+		})
+	}
+}
+
+func TestSetConfigString_NewKeysPersist(t *testing.T) {
+	dir := t.TempDir()
+	config.CfgFile = filepath.Join(dir, "config.yaml")
+	require.NoError(t, config.InitConfig())
+
+	// New scalar keys (debug, cache flags)
+	require.NoError(t, config.SetConfigString("debug", "true"))
+	assert.True(t, viper.GetBool("debug"))
+
+	require.NoError(t, config.SetConfigString("cache.bypass", "true"))
+	assert.True(t, viper.GetBool("cache.bypass"))
+
+	require.NoError(t, config.SetConfigString("cache.refresh", "true"))
+	assert.True(t, viper.GetBool("cache.refresh"))
+
+	// tools.* key
+	require.NoError(t, config.SetConfigString("tools.git.commit.role", "commit"))
+	assert.Equal(t, "commit", viper.GetString("tools.git.commit.role"))
+
+	// operator.* key
+	require.NoError(t, config.SetConfigString("operator.max_steps", "5"))
+	assert.Equal(t, 5, viper.GetInt("operator.max_steps"))
 }
 
 func TestSetConfigString_EmptyValue(t *testing.T) {

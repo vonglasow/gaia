@@ -17,8 +17,9 @@ var validKeys = map[string]bool{
 	"model": true, "host": true, "port": true,
 	"roles.default": true, "roles.describe": true, "roles.shell": true, "roles.code": true,
 	"roles.commit": true, "roles.branch": true,
-	"cache.enabled": true, "cache.dir": true,
+	"cache.enabled": true, "cache.dir": true, "cache.bypass": true, "cache.refresh": true,
 	"auto_role.enabled": true, "auto_role.mode": true,
+	"debug": true,
 }
 
 // IsValidKey checks if a key is valid for configuration
@@ -41,6 +42,11 @@ func IsValidKey(key string) bool {
 
 	// Allow any operator.* key
 	if strings.HasPrefix(key, "operator.") {
+		return true
+	}
+
+	// Allow any tools.* key (e.g. tools.git.commit.role)
+	if strings.HasPrefix(key, "tools.") {
 		return true
 	}
 
@@ -155,7 +161,7 @@ func InitConfig() error {
 
 func SetConfigString(key, value string) error {
 	if !IsValidKey(key) {
-		return fmt.Errorf("invalid config key '%s'. Valid keys include: model, host, port, cache.enabled, cache.dir, roles.*, auto_role.enabled, auto_role.mode, auto_role.keywords.*", key)
+		return fmt.Errorf("invalid config key '%s'. Valid keys include: model, host, port, cache.enabled, cache.dir, cache.bypass, cache.refresh, debug, roles.*, auto_role.enabled, auto_role.mode, auto_role.keywords.*, operator.*, tools.*", key)
 	}
 	viper.Set(key, value)
 	if err := viper.WriteConfig(); err != nil {
