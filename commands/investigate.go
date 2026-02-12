@@ -13,6 +13,9 @@ import (
 	"github.com/spf13/viper"
 )
 
+// defaultOperatorDenylist is used when operator.denylist is missing or invalid in config.
+var defaultOperatorDenylist = []string{"rm -rf", "sudo", "mkfs", "> /dev/sd"}
+
 // shellRunnerWithTimeout wraps ExecuteExternalCommandWithContext with a timeout.
 type shellRunnerWithTimeout struct {
 	timeout time.Duration
@@ -61,14 +64,23 @@ func runInvestigate(cmd *cobra.Command, args []string) error {
 	}
 	runner := &shellRunnerWithTimeout{timeout: time.Duration(timeoutSec) * time.Second}
 
+	denylist := getStringSlice("operator.denylist")
+	if denylist == nil {
+		denylist = defaultOperatorDenylist
+	}
+	allowlist := getStringSlice("operator.allowlist")
+	if allowlist == nil {
+		allowlist = []string{}
+	}
+
 	opts := operator.RunOptions{
 		MaxSteps:          maxSteps,
 		DryRun:            dryRun,
 		Yes:               yes,
 		Debug:             debug,
 		Model:             viper.GetString("model"),
-		Denylist:          getStringSlice("operator.denylist"),
-		Allowlist:         getStringSlice("operator.allowlist"),
+		Denylist:          denylist,
+		Allowlist:         allowlist,
 		ConfirmMediumRisk: viper.GetBool("operator.confirm_medium_risk"),
 		ConfirmFunc:       promptForConfirmation,
 		ShellRunner:       runner,
