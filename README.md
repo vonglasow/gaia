@@ -141,7 +141,7 @@ The operator mode (`gaia investigate`) uses the following options (all under `op
 - `operator.confirm_medium_risk`: Ask for confirmation before running medium-risk commands (default: `true`)
 - `operator.dry_run`: If `true`, never execute commands; only show what would be run (default: `false`)
 - `operator.denylist`: List of forbidden command patterns (e.g. `["rm -rf", "sudo", "mkfs"]`). Commands containing these are blocked.
-- `operator.allowlist`: Optional. If set, only commands matching one of these patterns are allowed (e.g. `["^df", "^du", "^find"]`).
+- `operator.allowlist`: Optional. If set, only commands that start with or contain one of these patterns are allowed (prefix or substring, case-insensitive; not regex). Example: `["df", "du", "find"]`.
 - `operator.output_max_bytes`: Maximum length of command output per step (default: `4096`); longer output is truncated.
 - `operator.command_timeout_seconds`: Timeout in seconds for each shell command (default: `30`).
 
@@ -330,7 +330,7 @@ gaia investigate --max-steps 5 "Quick disk check"
 
 **Confirmation prompt (TUI):** When the operator needs your approval for a medium-risk command, Gaia shows an interactive confirmation screen in a real terminal: the proposed command in a styled box, then **y** or **Enter** to allow or **n** to decline. Content wraps to the terminal width. When not in a TTY, a simple line-based prompt is used.
 
-**Safety:** Commands matching `operator.denylist` (e.g. `sudo`, `rm -rf`) are always blocked. If `operator.allowlist` is set, only commands matching that list are allowed. Use `--dry-run` to preview behaviour without executing anything.
+**Safety:** Commands containing `operator.denylist` entries (e.g. `sudo`, `rm -rf`) are always blocked. If `operator.allowlist` is set, only commands that start with or contain an allowlist entry (prefix/substring, case-insensitive) are allowed. Use `--dry-run` to preview behaviour without executing anything.
 
 ### Tool Commands
 
