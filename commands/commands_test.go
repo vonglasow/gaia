@@ -14,6 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	// Build command tree once so RootCmd has subcommands (config, cache, etc.) in all tests.
+	commands.BuildCommandTree()
+}
+
 func TestReadStdin(t *testing.T) {
 	originalStdin := os.Stdin
 	defer func() { os.Stdin = originalStdin }()
@@ -57,15 +62,13 @@ func TestToolCmd_Structure(t *testing.T) {
 }
 
 func TestToolCmd_NoConfig(t *testing.T) {
-	// Set up config
 	tmpDir := t.TempDir()
 	config.CfgFile = filepath.Join(tmpDir, "config.yaml")
 	err := config.InitConfig()
 	require.NoError(t, err)
 
-	// Test tool command with non-existent tool
-	commands.ToolCmd.SetArgs([]string{"nonexistent", "action"})
-	err = commands.ToolCmd.Execute()
+	commands.RootCmd.SetArgs([]string{"tool", "nonexistent", "action"})
+	err = commands.RootCmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not configured")
 }
@@ -77,6 +80,17 @@ func TestConfigCmd_List(t *testing.T) {
 	require.NoError(t, err)
 
 	commands.RootCmd.SetArgs([]string{"config", "list"})
+	err = commands.RootCmd.Execute()
+	require.NoError(t, err)
+}
+
+func TestConfigCmd_ListShort(t *testing.T) {
+	tmpDir := t.TempDir()
+	config.CfgFile = filepath.Join(tmpDir, "config.yaml")
+	err := config.InitConfig()
+	require.NoError(t, err)
+
+	commands.RootCmd.SetArgs([]string{"config", "list", "--short"})
 	err = commands.RootCmd.Execute()
 	require.NoError(t, err)
 }
@@ -104,8 +118,8 @@ func TestConfigCmd_GetNonExistent(t *testing.T) {
 	err := config.InitConfig()
 	require.NoError(t, err)
 
-	commands.GetCmd.SetArgs([]string{"nonexistent.key"})
-	err = commands.GetCmd.Execute()
+	commands.RootCmd.SetArgs([]string{"config", "get", "nonexistent.key"})
+	err = commands.RootCmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not set")
 }
@@ -116,8 +130,8 @@ func TestConfigCmd_SetInvalidKey(t *testing.T) {
 	err := config.InitConfig()
 	require.NoError(t, err)
 
-	commands.SetCmd.SetArgs([]string{"invalid.key", "value"})
-	err = commands.SetCmd.Execute()
+	commands.RootCmd.SetArgs([]string{"config", "set", "invalid.key", "value"})
+	err = commands.RootCmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid config key")
 }
@@ -133,8 +147,8 @@ func TestConfigCmd_Path(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	commands.PathCmd.SetArgs([]string{})
-	err = commands.PathCmd.Execute()
+	commands.RootCmd.SetArgs([]string{"config", "path"})
+	err = commands.RootCmd.Execute()
 	require.NoError(t, err)
 
 	if err := w.Close(); err != nil {

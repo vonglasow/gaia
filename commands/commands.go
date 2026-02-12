@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"gaia/api"
@@ -118,14 +119,23 @@ var CacheDumpCmd = &cobra.Command{
 	},
 }
 
+const configListMaxValueLen = 80
+
 var ListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List configuration settings",
+	Long:  "List all configuration keys and values. Use --short to truncate long values (e.g. role prompts).",
 	Run: func(cmd *cobra.Command, args []string) {
+		short, _ := cmd.Flags().GetBool("short")
 		keys := viper.AllKeys()
 		sort.Strings(keys)
 		for _, key := range keys {
-			fmt.Printf("%s: %v\n", key, viper.Get(key))
+			v := viper.Get(key)
+			valStr := fmt.Sprintf("%v", v)
+			if short && len(valStr) > configListMaxValueLen {
+				valStr = valStr[:configListMaxValueLen] + "..."
+			}
+			fmt.Printf("%s: %s\n", key, valStr)
 		}
 	},
 }
@@ -270,28 +280,34 @@ func init() {
 		"",
 		"Path to an alternative YAML configuration file (or $GAIA_CONFIG)",
 	)
+	ListCmd.Flags().BoolP("short", "s", false, "Truncate long values (e.g. role prompts) to 80 characters")
 }
 
-func Execute() error {
+var buildCommandTreeOnce sync.Once
+
+// BuildCommandTree registers all subcommands and flags. Called by Execute and by tests that need the full tree.
+func BuildCommandTree() {
+	buildCommandTreeOnce.Do(func() {
+		buildCommandTree()
+	})
+}
+
+func buildCommandTree() {
 	ConfigCmd.AddCommand(ListCmd, SetCmd, GetCmd, PathCmd, CreateCmd)
 	CacheCmd.AddCommand(CacheClearCmd, CacheStatsCmd, CacheListCmd, CacheDumpCmd)
 	AskCmd.Flags().StringP("role", "r", "", "Specify role code (default, describe, code)")
-	if err := viper.BindPFlag("systemrole", AskCmd.Flags().Lookup("role")); err != nil {
-		return fmt.Errorf("failed to bind role flag: %w", err)
-	}
+	_ = viper.BindPFlag("systemrole", AskCmd.Flags().Lookup("role"))
 	RootCmd.PersistentFlags().Bool("no-cache", false, "Bypass local response cache")
-	if err := viper.BindPFlag("cache.bypass", RootCmd.PersistentFlags().Lookup("no-cache")); err != nil {
-		return fmt.Errorf("failed to bind no-cache flag: %w", err)
-	}
+	_ = viper.BindPFlag("cache.bypass", RootCmd.PersistentFlags().Lookup("no-cache"))
 	RootCmd.PersistentFlags().Bool("refresh-cache", false, "Regenerate and overwrite cache entries")
-	if err := viper.BindPFlag("cache.refresh", RootCmd.PersistentFlags().Lookup("refresh-cache")); err != nil {
-		return fmt.Errorf("failed to bind refresh-cache flag: %w", err)
-	}
+	_ = viper.BindPFlag("cache.refresh", RootCmd.PersistentFlags().Lookup("refresh-cache"))
 	RootCmd.PersistentFlags().Bool("debug", false, "Enable debug output (shows role detection info)")
-	if err := viper.BindPFlag("debug", RootCmd.PersistentFlags().Lookup("debug")); err != nil {
-		return fmt.Errorf("failed to bind debug flag: %w", err)
-	}
+	_ = viper.BindPFlag("debug", RootCmd.PersistentFlags().Lookup("debug"))
 	RootCmd.AddCommand(ConfigCmd, CacheCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd, InvestigateCmd)
+}
+
+func Execute() error {
+	BuildCommandTree()
 	return RootCmd.Execute()
 }
 
