@@ -173,6 +173,70 @@ func TestSetConfigString_EmptyValue(t *testing.T) {
 	assert.Equal(t, "", viper.GetString("model"))
 }
 
+func TestIsListKey(t *testing.T) {
+	tests := []struct {
+		key   string
+		list  bool
+		desc  string
+	}{
+		{"operator.denylist", true, "operator.denylist"},
+		{"operator.allowlist", true, "operator.allowlist"},
+		{"auto_role.keywords.shell", true, "auto_role.keywords.shell"},
+		{"auto_role.keywords.branch", true, "auto_role.keywords.branch"},
+		{"operator.max_steps", false, "operator.max_steps"},
+		{"model", false, "model"},
+		{"roles.default", false, "roles.default"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := config.IsListKey(tt.key)
+			assert.Equal(t, tt.list, got, "IsListKey(%q)", tt.key)
+		})
+	}
+}
+
+func TestSetConfigString_ListKey_Success(t *testing.T) {
+	dir := t.TempDir()
+	config.CfgFile = filepath.Join(dir, "config.yaml")
+	require.NoError(t, config.InitConfig())
+
+	err := config.SetConfigString("operator.denylist", `["rm -rf", "sudo", "mkfs"]`)
+	require.NoError(t, err)
+	got := viper.GetStringSlice("operator.denylist")
+	assert.Equal(t, []string{"rm -rf", "sudo", "mkfs"}, got)
+}
+
+func TestSetConfigString_ListKey_RequiresJSON(t *testing.T) {
+	dir := t.TempDir()
+	config.CfgFile = filepath.Join(dir, "config.yaml")
+	require.NoError(t, config.InitConfig())
+
+	err := config.SetConfigString("operator.denylist", "rm -rf")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a JSON array")
+}
+
+func TestSetConfigString_ListKey_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	config.CfgFile = filepath.Join(dir, "config.yaml")
+	require.NoError(t, config.InitConfig())
+
+	err := config.SetConfigString("operator.denylist", `[rm -rf]`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid JSON")
+}
+
+func TestSetConfigString_ListKey_AllowlistEmpty(t *testing.T) {
+	dir := t.TempDir()
+	config.CfgFile = filepath.Join(dir, "config.yaml")
+	require.NoError(t, config.InitConfig())
+
+	err := config.SetConfigString("operator.allowlist", `["df", "du"]`)
+	require.NoError(t, err)
+	got := viper.GetStringSlice("operator.allowlist")
+	assert.Equal(t, []string{"df", "du"}, got)
+}
+
 func TestSetConfigString_WhitespaceValue(t *testing.T) {
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")

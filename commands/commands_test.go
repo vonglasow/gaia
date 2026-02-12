@@ -2,9 +2,11 @@ package commands_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gaia/commands"
@@ -110,6 +112,36 @@ func TestConfigCmd_GetSet(t *testing.T) {
 	commands.RootCmd.SetArgs([]string{"config", "get", "model"})
 	err = commands.RootCmd.Execute()
 	require.NoError(t, err)
+}
+
+func TestConfigCmd_GetSet_ListKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	config.CfgFile = filepath.Join(tmpDir, "config.yaml")
+	err := config.InitConfig()
+	require.NoError(t, err)
+
+	// Set list key via CLI (JSON array)
+	commands.RootCmd.SetArgs([]string{"config", "set", "operator.denylist", `["rm -rf", "sudo"]`})
+	err = commands.RootCmd.Execute()
+	require.NoError(t, err)
+
+	// Get list key: capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	commands.RootCmd.SetArgs([]string{"config", "get", "operator.denylist"})
+	err = commands.RootCmd.Execute()
+	require.NoError(t, err)
+	_ = w.Close()
+	os.Stdout = oldStdout
+	out, _ := io.ReadAll(r)
+	outStr := strings.TrimSpace(string(out))
+
+	// Output should be valid JSON array
+	var list []string
+	err = json.Unmarshal([]byte(outStr), &list)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"rm -rf", "sudo"}, list)
 }
 
 func TestConfigCmd_GetNonExistent(t *testing.T) {

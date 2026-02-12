@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -51,6 +52,19 @@ func IsValidKey(key string) bool {
 	}
 
 	return false
+}
+
+// listKeyExact is the set of config keys that are string slices (not scalar).
+var listKeyExact = map[string]bool{
+	"operator.denylist": true, "operator.allowlist": true,
+}
+
+// IsListKey returns true if the key holds a list ([]string) value.
+func IsListKey(key string) bool {
+	if listKeyExact[key] {
+		return true
+	}
+	return strings.HasPrefix(key, "auto_role.keywords.")
 }
 
 func setDefaults() {
@@ -159,11 +173,26 @@ func InitConfig() error {
 	return nil
 }
 
+// SetConfigString sets a config key. For list keys (operator.denylist, operator.allowlist,
+// auto_role.keywords.*), value must be a JSON array of strings, e.g. `["a","b"]`.
+// For scalar keys, value is stored as-is.
 func SetConfigString(key, value string) error {
 	if !IsValidKey(key) {
 		return fmt.Errorf("invalid config key '%s'. Valid keys include: model, host, port, cache.enabled, cache.dir, cache.bypass, cache.refresh, debug, roles.*, auto_role.enabled, auto_role.mode, auto_role.keywords.*, operator.*, tools.*", key)
 	}
-	viper.Set(key, value)
+	if IsListKey(key) {
+		valueTrimmed := strings.TrimSpace(value)
+		if !strings.HasPrefix(valueTrimmed, "[") {
+			return fmt.Errorf("list key %q requires a JSON array of strings, e.g. [\"a\",\"b\"]", key)
+		}
+		var list []string
+		if err := json.Unmarshal([]byte(valueTrimmed), &list); err != nil {
+			return fmt.Errorf("list key %q: invalid JSON array: %w", key, err)
+		}
+		viper.Set(key, list)
+	} else {
+		viper.Set(key, value)
+	}
 	if err := viper.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write config file %s: %w", CfgFile, err)
 	}

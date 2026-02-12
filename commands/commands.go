@@ -3,6 +3,7 @@ package commands
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -160,12 +161,17 @@ var CreateCmd = &cobra.Command{
 var SetCmd = &cobra.Command{
 	Use:   "set [key] [value]",
 	Short: "Set configuration setting",
+	Long:  "For list keys (operator.denylist, operator.allowlist, auto_role.keywords.*) use a JSON array, e.g. [\"a\",\"b\"].",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := config.SetConfigString(args[0], args[1]); err != nil {
 			return err
 		}
-		fmt.Println("Config setting updated", args[0], "to", args[1])
+		if config.IsListKey(args[0]) {
+			fmt.Println("Config setting updated", args[0], "to list value")
+		} else {
+			fmt.Println("Config setting updated", args[0], "to", args[1])
+		}
 		return nil
 	},
 }
@@ -178,6 +184,30 @@ var GetCmd = &cobra.Command{
 		key := args[0]
 		if !viper.IsSet(key) {
 			return fmt.Errorf("configuration key '%s' is not set. Use 'gaia config list' to see available keys", key)
+		}
+		if config.IsListKey(key) {
+			raw := viper.Get(key)
+			// Viper may return []interface{} or []string
+			var list []string
+			switch v := raw.(type) {
+			case []string:
+				list = v
+			case []interface{}:
+				for _, e := range v {
+					if s, ok := e.(string); ok {
+						list = append(list, s)
+					}
+				}
+			default:
+				fmt.Println(viper.GetString(key))
+				return nil
+			}
+			jsonBytes, err := json.Marshal(list)
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(jsonBytes))
+			return nil
 		}
 		fmt.Println(viper.GetString(key))
 		return nil
