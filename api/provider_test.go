@@ -45,6 +45,38 @@ func TestGetProvider_OpenAI(t *testing.T) {
 	}
 }
 
+func TestGetProvider_Mistral(t *testing.T) {
+	viper.Set("host", "api.mistral.ai")
+	viper.Set("port", 443)
+
+	provider, err := GetProvider()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if provider.GetProviderName() != "Mistral" {
+		t.Errorf("expected Mistral provider, got %s", provider.GetProviderName())
+	}
+
+	if _, ok := provider.(*MistralProvider); !ok {
+		t.Error("expected MistralProvider type")
+	}
+}
+
+func TestGetProvider_MistralWithDifferentPortDefaultsToOllama(t *testing.T) {
+	viper.Set("host", "api.mistral.ai")
+	viper.Set("port", 8080)
+
+	provider, err := GetProvider()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if provider.GetProviderName() != "Ollama" {
+		t.Errorf("expected Ollama provider for api.mistral.ai with non-443 port, got %s", provider.GetProviderName())
+	}
+}
+
 func TestGetProvider_EmptyHost(t *testing.T) {
 	viper.Set("host", "")
 	viper.Set("port", 11434)
