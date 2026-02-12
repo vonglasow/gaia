@@ -38,13 +38,14 @@ Agent guide for the **gaia** repository.
 This is a Go CLI project with a small, clear structure (from the repo root):
 
 - `.github/` — GitHub Actions workflows (CI + release automation)
-- `api/` — API interaction and streaming functionality
-- `commands/` — CLI command definitions
+- `api/` — API interaction and streaming; providers for Ollama, OpenAI, Mistral
+- `api/operator/` — operator (investigate) logic: planner, executor, safety, tools
+- `commands/` — CLI command definitions (including `investigate` for operator mode)
 - `config/` — configuration management
 - `main.go` — application entry point
 - `.pre-commit-config.yaml` — formatting/lint automation
 - `.goreleaser.yaml` — release packaging config
-- `README.md` - Documentation
+- `README.md` — Documentation
 - `go.mod` / `go.sum` — Go modules
 
 (If new directories appear, do not assume they are wired into CI without checking.)

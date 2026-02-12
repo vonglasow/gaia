@@ -23,7 +23,7 @@ and support for different interaction modes.
 - 🤖 Automatic role detection based on message content
 - 📦 Automatic model management (pull if not present)
 - 💾 Response caching for faster repeated queries
-- 🔌 Support for local (Ollama) and remote (OpenAI) APIs
+- 🔌 Support for local (Ollama) and remote (OpenAI, Mistral) APIs
 - 🛠️ Tool integration for executing external commands
 - 📥 Stdin support for piping content
 - 🔍 **Investigate (operator mode)**: autonomous investigation with tool execution (e.g. "Why is my disk full?") — plan, run commands, reason, and summarize with safety controls (denylist, confirmation, dry-run)
@@ -33,7 +33,7 @@ and support for different interaction modes.
 ### Prerequisites
 
 - Go 1.26 or later
-- A running instance of a compatible language model API (e.g., Ollama) or OpenAI API key
+- A running instance of a compatible language model API (e.g., Ollama) or an API key for OpenAI or Mistral
 
 ### Building from Source
 
@@ -62,9 +62,9 @@ Gaia stores its configuration in `~/.config/gaia/config.yaml`. The configuration
 
 ### Basic Configuration
 
-- `model`: The language model to use (default: "mistral" for Ollama, "gpt-4o-mini" for OpenAI)
-- `host`: API host (default: "localhost" for Ollama, "api.openai.com" for OpenAI)
-- `port`: API port (default: 11434 for Ollama, 443 for OpenAI)
+- `model`: The language model to use (default: "mistral" for Ollama, "gpt-4o-mini" for OpenAI, "mistral-medium-latest" for Mistral)
+- `host`: API host (default: "localhost" for Ollama, "api.openai.com" for OpenAI, "api.mistral.ai" for Mistral)
+- `port`: API port (default: 11434 for Ollama, 443 for OpenAI and Mistral)
 
 ### Cache Configuration
 
