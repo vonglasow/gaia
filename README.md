@@ -517,10 +517,17 @@ go test -v ./...
 
 The project uses:
 - `go fmt` for formatting
-- `golangci-lint` for linting
-- `govulncheck` for vulnerability scanning of Go dependencies (run via pre-commit when Go files change)
+- `golangci-lint` for linting (version pinned in `.golangci-lint-version`; CI and pre-commit should use the same version)
+- `govulncheck` for vulnerability scanning of Go dependencies (run in CI and via pre-commit when Go files change)
 - `semgrep` for static analysis (run via pre-commit; uses `--config auto` from the Semgrep Registry)
 - `pre-commit` hooks for automated checks
+
+**Align with CI (recommended):** install the same golangci-lint version as CI so local lint matches:
+
+```bash
+# Version is in .golangci-lint-version
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(cat .golangci-lint-version)
+```
 
 **Optional (for the govulncheck pre-commit hook):** install govulncheck so the local hook can run:
 
@@ -532,6 +539,13 @@ Run all checks:
 
 ```bash
 pre-commit run -a
+```
+
+**Dependency maintenance (run periodically):** check for known vulnerabilities and available updates:
+
+```bash
+govulncheck ./...
+go list -m -u all
 ```
 
 ## License

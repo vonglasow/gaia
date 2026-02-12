@@ -59,7 +59,8 @@ This is a Go CLI project with a small, clear structure (from the repo root):
 The CI workflow runs on push + PR and enforces:
 
 - Go version: **1.26** (matrix)
-- `golangci-lint` via GitHub Action
+- `golangci-lint` via GitHub Action (version from `.golangci-lint-version`; align locally for consistent results)
+- `govulncheck` (vulnerability scan of Go deps)
 - `pre-commit-ci/lite-action`
 - tests: `go test -v ./...`
 - release job only on `main`, using semantic-release + goreleaser (requires token)
