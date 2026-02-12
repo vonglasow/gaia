@@ -151,8 +151,35 @@ func TestAllow_dryRun(t *testing.T) {
 }
 
 func Test_formatToolCallForConfirm(t *testing.T) {
-	got := formatToolCallForConfirm(RunCmdName, map[string]string{"cmd": "df -h"})
-	if got != "Run command: df -h" {
-		t.Errorf("formatToolCallForConfirm = %q", got)
-	}
+	t.Run("run_cmd with cmd", func(t *testing.T) {
+		got := formatToolCallForConfirm(RunCmdName, map[string]string{"cmd": "df -h"})
+		if got != "Run command: df -h" {
+			t.Errorf("formatToolCallForConfirm = %q", got)
+		}
+	})
+	t.Run("run_cmd without cmd", func(t *testing.T) {
+		got := formatToolCallForConfirm(RunCmdName, map[string]string{"other": "x"})
+		if got != "run_cmd with args: other=x" {
+			t.Errorf("formatToolCallForConfirm = %q", got)
+		}
+	})
+	t.Run("run_cmd empty args", func(t *testing.T) {
+		got := formatToolCallForConfirm(RunCmdName, map[string]string{})
+		if got != "run_cmd" {
+			t.Errorf("formatToolCallForConfirm = %q", got)
+		}
+	})
+	t.Run("other tool with path", func(t *testing.T) {
+		got := formatToolCallForConfirm("read_file", map[string]string{"path": "/tmp/foo"})
+		if got != "read_file with args: path=/tmp/foo" {
+			t.Errorf("formatToolCallForConfirm = %q", got)
+		}
+	})
+	t.Run("multiple args", func(t *testing.T) {
+		got := formatToolCallForConfirm("tool", map[string]string{"a": "1", "b": "2"})
+		// Sorted: a=1, b=2
+		if got != "tool with args: a=1, b=2" {
+			t.Errorf("formatToolCallForConfirm = %q", got)
+		}
+	})
 }

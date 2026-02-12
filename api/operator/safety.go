@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -90,11 +91,22 @@ func Allow(tool *Tool, args map[string]string, opts GuardOptions) (allowed bool,
 }
 
 // formatToolCallForConfirm returns a short description of the tool call for confirmation prompt.
+// It formats all args generically (key=value) so any tool schema is supported.
 func formatToolCallForConfirm(name string, args map[string]string) string {
 	if name == RunCmdName {
-		if cmd, ok := args["cmd"]; ok {
+		if cmd, ok := args["cmd"]; ok && strings.TrimSpace(cmd) != "" {
 			return "Run command: " + cmd
 		}
 	}
-	return name + " with args: " + strings.Join(strings.Fields(strings.TrimSpace(args["cmd"])), " ")
+	// Generic: show all key=value pairs
+	if len(args) == 0 {
+		return name
+	}
+	parts := make([]string, 0, len(args))
+	for k, v := range args {
+		parts = append(parts, k+"="+v)
+	}
+	// Sort for deterministic output
+	sort.Strings(parts)
+	return name + " with args: " + strings.Join(parts, ", ")
 }
