@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -90,6 +91,15 @@ func sendMessageInternal(msg string, printResponse bool) (string, error) {
 	request, err := buildRequestPayload(msg)
 	if err != nil {
 		return "", err
+	}
+
+	if viper.GetBool("debug") {
+		model := request.Model
+		if model == "" {
+			model = "(provider default)"
+		}
+		fmt.Fprintf(os.Stderr, "[DEBUG] API: provider=%s model=%s host=%s port=%d\n",
+			provider.GetProviderName(), model, viper.GetString("host"), viper.GetInt("port"))
 	}
 
 	responseContent, err := provider.SendMessage(request, printResponse)

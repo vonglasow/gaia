@@ -55,15 +55,9 @@ func (p *OpenAIProvider) GetProviderName() string {
 	return "OpenAI"
 }
 
-// CheckModelExists always returns true for OpenAI since models are validated server-side
+// CheckModelExists always returns true for OpenAI since models are validated server-side.
+// Does not modify config; SendMessage uses a local default (gpt-4o-mini) when model is empty.
 func (p *OpenAIProvider) CheckModelExists() (bool, error) {
-	// OpenAI doesn't require pre-checking model existence
-	// The API will return an error if the model doesn't exist
-	modelName := viper.GetString("model")
-	if modelName == "" {
-		// Default OpenAI model
-		viper.Set("model", "gpt-4o-mini")
-	}
 	return true, nil
 }
 

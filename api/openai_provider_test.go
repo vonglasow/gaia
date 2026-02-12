@@ -29,7 +29,7 @@ func TestOpenAIProvider_GetProviderName(t *testing.T) {
 func TestOpenAIProvider_CheckModelExists(t *testing.T) {
 	provider := NewOpenAIProvider()
 
-	// Test with empty model (should set default)
+	// Test with empty model: CheckModelExists returns true and does not mutate config
 	viper.Set("model", "")
 	exists, err := provider.CheckModelExists()
 	if err != nil {
@@ -38,10 +38,9 @@ func TestOpenAIProvider_CheckModelExists(t *testing.T) {
 	if !exists {
 		t.Error("expected CheckModelExists to return true")
 	}
-
-	// Verify default model was set
-	if viper.GetString("model") != "gpt-4o-mini" {
-		t.Errorf("expected default model 'gpt-4o-mini', got '%s'", viper.GetString("model"))
+	// No side effect: config model remains empty; SendMessage uses a local default when needed
+	if viper.GetString("model") != "" {
+		t.Errorf("expected config unchanged (model empty), got '%s'", viper.GetString("model"))
 	}
 }
 

@@ -55,15 +55,9 @@ func (p *MistralProvider) GetProviderName() string {
 	return "Mistral"
 }
 
-// CheckModelExists always returns true for Mistral since models are validated server-side
+// CheckModelExists always returns true for Mistral since models are validated server-side.
+// Does not modify config; SendMessage uses a local default (mistral-medium-latest) when model is empty.
 func (p *MistralProvider) CheckModelExists() (bool, error) {
-	// Mistral doesn't require pre-checking model existence
-	// The API will return an error if the model doesn't exist
-	modelName := viper.GetString("model")
-	if modelName == "" {
-		// Default Mistral model
-		viper.Set("model", "mistral-medium-latest")
-	}
 	return true, nil
 }
 

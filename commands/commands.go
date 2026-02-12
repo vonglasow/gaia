@@ -34,6 +34,11 @@ var RootCmd = &cobra.Command{
 			if err := config.InitConfig(); err != nil {
 				return fmt.Errorf("init config: %w", err)
 			}
+			// Debug output only when --debug is passed; ignore config file value
+			if f := cmd.Root().PersistentFlags().Lookup("debug"); f != nil {
+				debugVal, _ := cmd.Root().PersistentFlags().GetBool("debug")
+				viper.Set("debug", debugVal)
+			}
 		}
 		return nil
 	},
@@ -192,6 +197,9 @@ var AskCmd = &cobra.Command{
 	Short: "Ask to a model",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		if viper.GetBool("debug") {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Command: ask\n")
+		}
 		msg := readStdin()
 		if len(args) > 0 {
 			if msg != "" {
@@ -221,6 +229,9 @@ var ChatCmd = &cobra.Command{
 	Use:   "chat",
 	Short: "Start an interactive chat session",
 	Run: func(cmd *cobra.Command, args []string) {
+		if viper.GetBool("debug") {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Command: chat\n")
+		}
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Println("Starting chat session. Type 'exit' to end the chat.")
 		fmt.Println("----------------------------------------")
@@ -697,7 +708,9 @@ Use {response} for single-line content (like branch names).`,
 		tool := args[0]
 		action := args[1]
 		actionArgs := args[2:]
-
+		if viper.GetBool("debug") {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Command: tool %s %s\n", tool, action)
+		}
 		return executeToolAction(tool, action, actionArgs)
 	},
 }

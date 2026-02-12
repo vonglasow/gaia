@@ -29,7 +29,7 @@ func TestMistralProvider_GetProviderName(t *testing.T) {
 func TestMistralProvider_CheckModelExists(t *testing.T) {
 	provider := NewMistralProvider()
 
-	// Test with empty model (should set default)
+	// Test with empty model: CheckModelExists returns true and does not mutate config
 	viper.Set("model", "")
 	exists, err := provider.CheckModelExists()
 	if err != nil {
@@ -38,10 +38,9 @@ func TestMistralProvider_CheckModelExists(t *testing.T) {
 	if !exists {
 		t.Error("expected CheckModelExists to return true")
 	}
-
-	// Verify default model was set
-	if viper.GetString("model") != "mistral-medium-latest" {
-		t.Errorf("expected default model 'mistral-medium-latest', got '%s'", viper.GetString("model"))
+	// No side effect: config model remains empty; SendMessage uses a local default when needed
+	if viper.GetString("model") != "" {
+		t.Errorf("expected config unchanged (model empty), got '%s'", viper.GetString("model"))
 	}
 }
 
@@ -119,15 +118,6 @@ func TestMistralProvider_SendMessage_UsesDefaultModel(t *testing.T) {
 
 	viper.Set("model", "")
 
-	// First check model exists to set the default model
-	_, err := provider.CheckModelExists()
-	if err != nil {
-		t.Fatalf("unexpected error from CheckModelExists: %v", err)
-	}
-	if viper.GetString("model") != "mistral-medium-latest" {
-		t.Errorf("expected default model 'mistral-medium-latest', got '%s'", viper.GetString("model"))
-	}
-
 	request := APIRequest{
 		Model:    "",
 		Messages: []Message{{Role: "user", Content: "Hello"}},
@@ -135,7 +125,7 @@ func TestMistralProvider_SendMessage_UsesDefaultModel(t *testing.T) {
 	}
 
 	// This will fail with network error, but we're testing that it tries to use the default model
-	_, err = provider.SendMessage(request, false)
+	_, err := provider.SendMessage(request, false)
 
 	// We expect an error (network or API error), but we're mainly checking that the function
 	// doesn't panic and handles the default model case

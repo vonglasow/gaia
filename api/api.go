@@ -115,6 +115,30 @@ func ClearChatHistory() {
 	chatHistory = []Message{}
 }
 
+// debugLogCachedAPI writes provider/model/host/port to stderr when debug is on (e.g. on cache hit).
+// No-op if debug is not set (so callers need not guard).
+func debugLogCachedAPI() {
+	if !viper.GetBool("debug") {
+		return
+	}
+	provider, err := GetProvider()
+	if err != nil {
+		model := viper.GetString("model")
+		if model == "" {
+			model = "(provider default)"
+		}
+		fmt.Fprintf(os.Stderr, "[DEBUG] API (cached): provider=? model=%s host=%s port=%d\n",
+			model, viper.GetString("host"), viper.GetInt("port"))
+		return
+	}
+	model := viper.GetString("model")
+	if model == "" {
+		model = "(provider default)"
+	}
+	fmt.Fprintf(os.Stderr, "[DEBUG] API (cached): provider=%s model=%s host=%s port=%d\n",
+		provider.GetProviderName(), model, viper.GetString("host"), viper.GetInt("port"))
+}
+
 // Main function to process messages and ensure the model exists before sending
 func ProcessMessage(msg string) error {
 	if strings.TrimSpace(msg) == "" {
@@ -123,6 +147,9 @@ func ProcessMessage(msg string) error {
 
 	// Detect role for debug output (even when reading from cache)
 	debug := viper.GetBool("debug")
+	if debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] ProcessMessage: entry\n")
+	}
 	var detectionResult *DetectionResult
 	if viper.GetBool("auto_role.enabled") {
 		explicitRole := viper.GetString("systemrole")
@@ -177,16 +204,19 @@ func ProcessMessage(msg string) error {
 			cacheKey = key
 			if !bypassCache && !refreshCache {
 				if cached, ok, err := readCache(cacheKey); err == nil && ok {
-					if debug && detectionResult != nil {
-						fmt.Fprintf(os.Stderr, "[DEBUG] Using cached response\n")
-						fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
-						if detectionResult.Score > 0 {
-							fmt.Fprintf(os.Stderr, ", score: %.2f", detectionResult.Score)
+					if debug {
+						fmt.Fprintf(os.Stderr, "[DEBUG] Cache: hit\n")
+						if detectionResult != nil {
+							fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
+							if detectionResult.Score > 0 {
+								fmt.Fprintf(os.Stderr, ", score: %.2f", detectionResult.Score)
+							}
+							if detectionResult.Reason != "" {
+								fmt.Fprintf(os.Stderr, ", reason: %s", detectionResult.Reason)
+							}
+							fmt.Fprintf(os.Stderr, ")\n")
 						}
-						if detectionResult.Reason != "" {
-							fmt.Fprintf(os.Stderr, ", reason: %s", detectionResult.Reason)
-						}
-						fmt.Fprintf(os.Stderr, ")\n")
+						debugLogCachedAPI()
 					}
 					fmt.Print(cached)
 					fmt.Println()
@@ -199,6 +229,15 @@ func ProcessMessage(msg string) error {
 	}
 
 	// Display debug info before sending message (if not using cache or cache miss)
+	if debug {
+		if bypassCache {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Cache: bypassed\n")
+		} else if useCache {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Cache: miss\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Cache: not used\n")
+		}
+	}
 	if debug && detectionResult != nil {
 		fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
 		if detectionResult.Score > 0 {
@@ -210,8 +249,14 @@ func ProcessMessage(msg string) error {
 		fmt.Fprintf(os.Stderr, ")\n")
 	}
 
+	if debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] CheckAndPullIfRequired\n")
+	}
 	if err := CheckAndPullIfRequired(); err != nil {
 		return err
+	}
+	if debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] sendMessage: calling API\n")
 	}
 	response, err := sendMessage(msg)
 	if err != nil {
@@ -272,6 +317,9 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 
 	// Detect role for debug output (even when reading from cache)
 	debug := viper.GetBool("debug")
+	if debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] ProcessMessageWithResponse: entry\n")
+	}
 	var detectionResult *DetectionResult
 	if viper.GetBool("auto_role.enabled") {
 		explicitRole := viper.GetString("systemrole")
@@ -326,16 +374,19 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 			cacheKey = key
 			if !bypassCache && !refreshCache {
 				if cached, ok, err := readCache(cacheKey); err == nil && ok {
-					if debug && detectionResult != nil {
-						fmt.Fprintf(os.Stderr, "[DEBUG] Using cached response\n")
-						fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
-						if detectionResult.Score > 0 {
-							fmt.Fprintf(os.Stderr, ", score: %.2f", detectionResult.Score)
+					if debug {
+						fmt.Fprintf(os.Stderr, "[DEBUG] Cache: hit\n")
+						if detectionResult != nil {
+							fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
+							if detectionResult.Score > 0 {
+								fmt.Fprintf(os.Stderr, ", score: %.2f", detectionResult.Score)
+							}
+							if detectionResult.Reason != "" {
+								fmt.Fprintf(os.Stderr, ", reason: %s", detectionResult.Reason)
+							}
+							fmt.Fprintf(os.Stderr, ")\n")
 						}
-						if detectionResult.Reason != "" {
-							fmt.Fprintf(os.Stderr, ", reason: %s", detectionResult.Reason)
-						}
-						fmt.Fprintf(os.Stderr, ")\n")
+						debugLogCachedAPI()
 					}
 					chatHistory = append(chatHistory, Message{Role: "user", Content: msg})
 					chatHistory = append(chatHistory, Message{Role: "assistant", Content: cached})
@@ -346,6 +397,15 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 	}
 
 	// Display debug info before sending message (if not using cache or cache miss)
+	if debug {
+		if bypassCache {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Cache: bypassed\n")
+		} else if useCache {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Cache: miss\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Cache: not used\n")
+		}
+	}
 	if debug && detectionResult != nil {
 		fmt.Fprintf(os.Stderr, "[DEBUG] Role: %s (method: %s", detectionResult.Role, detectionResult.Method)
 		if detectionResult.Score > 0 {
@@ -357,8 +417,14 @@ func ProcessMessageWithResponse(msg string) (string, error) {
 		fmt.Fprintf(os.Stderr, ")\n")
 	}
 
+	if debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] CheckAndPullIfRequired\n")
+	}
 	if err := CheckAndPullIfRequired(); err != nil {
 		return "", err
+	}
+	if debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] sendMessage: calling API\n")
 	}
 	response, err := sendMessageInternal(msg, false)
 	if err != nil {
