@@ -144,6 +144,7 @@ The operator mode (`gaia investigate`) uses the following options (all under `op
 - `operator.allowlist`: Optional. If set, only commands that start with or contain one of these patterns are allowed (prefix or substring, case-insensitive; not regex). Example: `["df", "du", "find"]`.
 - `operator.output_max_bytes`: Maximum length of command output per step (default: `4096`); longer output is truncated.
 - `operator.command_timeout_seconds`: Timeout in seconds for each shell command (default: `30`).
+- `operator.treat_exit_code_1_as_success`: When `true` (default), commands that exit with code 1 are treated as success and their output is returned (e.g. `git diff` with no changes). When `false`, exit code 1 is reported as an error. Useful if you want strict failure detection for all commands.
 
 Example in `config.yaml`:
 
@@ -157,6 +158,7 @@ operator:
     - "mkfs"
   allowlist: []   # leave empty to allow any command not on denylist
   command_timeout_seconds: 30
+  treat_exit_code_1_as_success: true   # default: git diff with no changes (exit 1) is not an error
 ```
 
 ### Use an Alternative Configuration File

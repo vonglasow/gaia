@@ -378,8 +378,9 @@ func executeExternalCommand(command string) (string, error) {
 
 // ExecuteExternalCommandWithContext runs a shell command with optional context (for timeout/cancel).
 // If ctx is nil, no timeout is applied. Returns stdout, stderr, and error.
-// Used by the operator (investigate) to run run_cmd with a timeout.
-// Shell is required for operator commands (pipes, redirects). Use only in trusted environments.
+// Used by the operator (investigate) and tool actions (e.g. context_command). Shell is required for pipes/redirects.
+// When operator.treat_exit_code_1_as_success is true (default), exit code 1 is treated as success (e.g. git diff with no changes).
+// Set to false to treat exit code 1 as an error.
 func ExecuteExternalCommandWithContext(ctx context.Context, command string) (stdout, stderr string, err error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
@@ -401,7 +402,7 @@ func ExecuteExternalCommandWithContext(ctx context.Context, command string) (std
 	stderrStr := strings.TrimSpace(errBuf.String())
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			if exitErr.ExitCode() == 1 {
+			if exitErr.ExitCode() == 1 && viper.GetBool("operator.treat_exit_code_1_as_success") {
 				return stdoutStr, stderrStr, nil
 			}
 			return stdoutStr, stderrStr, fmt.Errorf("command failed with exit code %d: %w", exitErr.ExitCode(), err)

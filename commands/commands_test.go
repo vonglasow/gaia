@@ -12,6 +12,7 @@ import (
 	"gaia/commands"
 	"gaia/config"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -280,6 +281,20 @@ func TestExecuteExternalCommandWithContext_emptyCommand(t *testing.T) {
 	_, _, err := commands.ExecuteExternalCommandWithContext(context.Background(), "   ")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty")
+}
+
+func TestExecuteExternalCommandWithContext_exitCode1Configurable(t *testing.T) {
+	// Default: exit code 1 is treated as success (e.g. git diff with no changes)
+	viper.Set("operator.treat_exit_code_1_as_success", true)
+	defer viper.Set("operator.treat_exit_code_1_as_success", true)
+	_, _, err := commands.ExecuteExternalCommandWithContext(context.Background(), "exit 1")
+	require.NoError(t, err)
+
+	// When false: exit code 1 is reported as error
+	viper.Set("operator.treat_exit_code_1_as_success", false)
+	_, _, err = commands.ExecuteExternalCommandWithContext(context.Background(), "exit 1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exit code 1")
 }
 
 func TestInvestigateCmd_Structure(t *testing.T) {

@@ -133,6 +133,9 @@ func setDefaults() {
 	viper.SetDefault("operator.denylist", []string{"rm -rf", "sudo", "mkfs", "> /dev/sd"})
 	viper.SetDefault("operator.output_max_bytes", 4096)
 	viper.SetDefault("operator.command_timeout_seconds", 30)
+	// When true (default), shell commands that exit with code 1 are treated as success (e.g. git diff with no changes).
+	// When false, exit code 1 is reported as an error.
+	viper.SetDefault("operator.treat_exit_code_1_as_success", true)
 }
 
 func InitConfig() error {
