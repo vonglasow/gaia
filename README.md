@@ -528,7 +528,7 @@ The project uses:
 
 ```bash
 # Version is in .golangci-lint-version
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(cat .golangci-lint-version)
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(cat .golangci-lint-version)
 ```
 
 **Optional (for the govulncheck pre-commit hook):** install govulncheck so the local hook can run:
