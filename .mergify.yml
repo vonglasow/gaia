@@ -1,10 +1,18 @@
 ---
+merge_queue:
+  max_parallel_checks: 1
+
 queue_rules:
   - name: dependabot-dev-queue
     autoqueue: true
     merge_method: rebase
     update_method: rebase
     batch_size: 1
+    queue_conditions:
+      - -conflict
+      - check-success~=(?i)lint
+      - check-success~=(?i)test
+      - "#check-success >= 1"
     merge_conditions:
       - -conflict
       - check-success~=(?i)lint
