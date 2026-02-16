@@ -165,14 +165,26 @@ func InitConfig() error {
 			if err := viper.SafeWriteConfigAs(CfgFile); err != nil {
 				var already viper.ConfigFileAlreadyExistsError
 				if errors.As(err, &already) || os.IsExist(err) {
-					return nil
+					if err := viper.ReadInConfig(); err != nil {
+						return fmt.Errorf("read config after create race: %w", err)
+					}
+				} else {
+					return fmt.Errorf("create default config: %w", err)
 				}
-				return fmt.Errorf("create default config: %w", err)
+			} else {
+				if err := viper.ReadInConfig(); err != nil {
+					return fmt.Errorf("read created default config: %w", err)
+				}
 			}
-			return nil
+		} else {
+			return fmt.Errorf("read config: %w", err)
 		}
-		return fmt.Errorf("read config: %w", err)
 	}
+
+	if err := loadTrustedLocalConfig(); err != nil {
+		return err
+	}
+
 	return nil
 }
 

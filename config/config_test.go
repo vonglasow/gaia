@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"gaia/config"
@@ -12,7 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func resetConfigState() {
+	viper.Reset()
+	config.CfgFile = ""
+}
+
 func TestInitConfig_CreatesFile(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 
@@ -31,6 +40,9 @@ func TestInitConfig_CreatesFile(t *testing.T) {
 }
 
 func TestInitConfig_UsesEnvVar(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, "config_env.yaml")
 	require.NoError(t, os.WriteFile(envFile, []byte{}, 0644))
@@ -50,6 +62,9 @@ func TestInitConfig_UsesEnvVar(t *testing.T) {
 }
 
 func TestSetConfigString_Success(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 
@@ -72,6 +87,9 @@ model: "mistral"
 }
 
 func TestSetConfigString_InvalidKey(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 	require.NoError(t, config.InitConfig())
@@ -82,6 +100,9 @@ func TestSetConfigString_InvalidKey(t *testing.T) {
 }
 
 func TestSetConfigString_AllValidKeys(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 	require.NoError(t, config.InitConfig())
@@ -104,9 +125,9 @@ func TestSetConfigString_AllValidKeys(t *testing.T) {
 
 func TestIsValidKey(t *testing.T) {
 	tests := []struct {
-		key      string
-		valid    bool
-		desc     string
+		key   string
+		valid bool
+		desc  string
 	}{
 		// Exact keys
 		{"model", true, "model"},
@@ -140,6 +161,9 @@ func TestIsValidKey(t *testing.T) {
 }
 
 func TestSetConfigString_NewKeysPersist(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 	require.NoError(t, config.InitConfig())
@@ -164,6 +188,9 @@ func TestSetConfigString_NewKeysPersist(t *testing.T) {
 }
 
 func TestSetConfigString_EmptyValue(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 	require.NoError(t, config.InitConfig())
@@ -175,9 +202,9 @@ func TestSetConfigString_EmptyValue(t *testing.T) {
 
 func TestIsListKey(t *testing.T) {
 	tests := []struct {
-		key   string
-		list  bool
-		desc  string
+		key  string
+		list bool
+		desc string
 	}{
 		{"operator.denylist", true, "operator.denylist"},
 		{"operator.allowlist", true, "operator.allowlist"},
@@ -196,6 +223,9 @@ func TestIsListKey(t *testing.T) {
 }
 
 func TestSetConfigString_ListKey_Success(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 	require.NoError(t, config.InitConfig())
@@ -207,6 +237,9 @@ func TestSetConfigString_ListKey_Success(t *testing.T) {
 }
 
 func TestSetConfigString_ListKey_RequiresJSON(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 	require.NoError(t, config.InitConfig())
@@ -217,6 +250,9 @@ func TestSetConfigString_ListKey_RequiresJSON(t *testing.T) {
 }
 
 func TestSetConfigString_ListKey_InvalidJSON(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 	require.NoError(t, config.InitConfig())
@@ -227,6 +263,9 @@ func TestSetConfigString_ListKey_InvalidJSON(t *testing.T) {
 }
 
 func TestSetConfigString_ListKey_AllowlistEmpty(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 	require.NoError(t, config.InitConfig())
@@ -238,6 +277,9 @@ func TestSetConfigString_ListKey_AllowlistEmpty(t *testing.T) {
 }
 
 func TestSetConfigString_WhitespaceValue(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 	require.NoError(t, config.InitConfig())
@@ -248,6 +290,9 @@ func TestSetConfigString_WhitespaceValue(t *testing.T) {
 }
 
 func TestInitConfig_CreatesDefaultValues(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 
@@ -282,6 +327,9 @@ func TestInitConfig_ExistingFilePreserved(t *testing.T) {
 }
 
 func TestInitConfig_InvalidYAML(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	config.CfgFile = filepath.Join(dir, "config.yaml")
 
@@ -294,6 +342,9 @@ func TestInitConfig_InvalidYAML(t *testing.T) {
 }
 
 func TestInitConfig_ReadOnlyFile(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	if os.Getuid() == 0 {
 		t.Skip("skipping test when running as root")
 	}
@@ -314,6 +365,9 @@ func TestInitConfig_ReadOnlyFile(t *testing.T) {
 }
 
 func TestInitConfig_NestedDirectoryCreation(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
 	dir := t.TempDir()
 	nestedPath := filepath.Join(dir, "nested", "deep")
 
@@ -325,4 +379,189 @@ func TestInitConfig_NestedDirectoryCreation(t *testing.T) {
 	err := config.InitConfig()
 	require.NoError(t, err)
 	require.FileExists(t, config.CfgFile)
+}
+
+func TestInitConfig_LocalConfigUntrusted_NonTTYIgnored(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	require.NoError(t, os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(repoRoot, ".gaia.yaml"), []byte("model: local-model\nroles:\n  default: local-role\n"), 0644))
+
+	workDir := filepath.Join(repoRoot, "sub", "dir")
+	require.NoError(t, os.MkdirAll(workDir, 0755))
+
+	oldWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(workDir))
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWd)
+	})
+
+	config.CfgFile = filepath.Join(t.TempDir(), "global-config.yaml")
+	require.NoError(t, os.WriteFile(config.CfgFile, []byte("model: global-model\nroles:\n  default: global-role\n"), 0644))
+
+	require.NoError(t, config.InitConfig())
+	assert.Equal(t, "global-model", viper.GetString("model"))
+	assert.Equal(t, "global-role", viper.GetString("roles.default"))
+}
+
+func TestInitConfig_LocalConfigTrusted_Loaded(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	require.NoError(t, os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(repoRoot, ".gaia.yaml"), []byte("model: local-model\nroles:\n  default: local-role\n"), 0644))
+
+	workDir := filepath.Join(repoRoot, "sub")
+	require.NoError(t, os.MkdirAll(workDir, 0755))
+
+	oldWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(workDir))
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWd)
+	})
+
+	require.NoError(t, config.TrustRepository(repoRoot))
+	trusted, err := config.IsRepositoryTrusted(repoRoot)
+	require.NoError(t, err)
+	assert.True(t, trusted)
+
+	config.CfgFile = filepath.Join(t.TempDir(), "global-config.yaml")
+	require.NoError(t, os.WriteFile(config.CfgFile, []byte("model: global-model\nroles:\n  default: global-role\n"), 0644))
+
+	require.NoError(t, config.InitConfig())
+	assert.Equal(t, "local-model", viper.GetString("model"))
+	assert.Equal(t, "local-role", viper.GetString("roles.default"))
+}
+
+func TestTrustAndUntrustRepository(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	require.NoError(t, os.MkdirAll(repoRoot, 0755))
+
+	require.NoError(t, config.TrustRepository(repoRoot))
+	trusted, err := config.IsRepositoryTrusted(repoRoot)
+	require.NoError(t, err)
+	assert.True(t, trusted)
+
+	require.NoError(t, config.UntrustRepository(repoRoot))
+	trusted, err = config.IsRepositoryTrusted(repoRoot)
+	require.NoError(t, err)
+	assert.False(t, trusted)
+}
+
+func TestResolveRepositoryRootFromPath(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	require.NoError(t, os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755))
+	nested := filepath.Join(repoRoot, "a", "b")
+	require.NoError(t, os.MkdirAll(nested, 0755))
+
+	resolved, err := config.ResolveRepositoryRootFromPath(nested)
+	require.NoError(t, err)
+	expectedRepoRoot, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		expectedRepoRoot = repoRoot
+	}
+	assert.Equal(t, expectedRepoRoot, resolved)
+
+	nonRepo := filepath.Join(t.TempDir(), "norepo")
+	require.NoError(t, os.MkdirAll(nonRepo, 0755))
+	resolved, err = config.ResolveRepositoryRootFromPath(nonRepo)
+	require.NoError(t, err)
+	expectedNonRepo, err := filepath.EvalSymlinks(nonRepo)
+	if err != nil {
+		expectedNonRepo = nonRepo
+	}
+	assert.Equal(t, expectedNonRepo, resolved)
+}
+
+func TestListTrustedRepositories(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoA := filepath.Join(t.TempDir(), "repo-a")
+	repoB := filepath.Join(t.TempDir(), "repo-b")
+	require.NoError(t, os.MkdirAll(repoA, 0755))
+	require.NoError(t, os.MkdirAll(repoB, 0755))
+
+	require.NoError(t, config.TrustRepository(repoA))
+	require.NoError(t, config.TrustRepository(repoB))
+
+	trusted, err := config.ListTrustedRepositories()
+	require.NoError(t, err)
+
+	resolvedA, err := filepath.EvalSymlinks(repoA)
+	if err != nil {
+		resolvedA = repoA
+	}
+	resolvedB, err := filepath.EvalSymlinks(repoB)
+	if err != nil {
+		resolvedB = repoB
+	}
+
+	assert.Contains(t, trusted, resolvedA)
+	assert.Contains(t, trusted, resolvedB)
+}
+
+func TestTrustRepository_ConcurrentWrites(t *testing.T) {
+	resetConfigState()
+	defer resetConfigState()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	const workers = 16
+	paths := make([]string, 0, workers)
+	for i := range workers {
+		repo := filepath.Join(t.TempDir(), "repo", string(rune('a'+i)))
+		require.NoError(t, os.MkdirAll(repo, 0755))
+		paths = append(paths, repo)
+	}
+
+	errCh := make(chan error, workers)
+	var wg sync.WaitGroup
+	for _, repo := range paths {
+		repo := repo
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- config.TrustRepository(repo)
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+
+	trusted, err := config.ListTrustedRepositories()
+	require.NoError(t, err)
+	for _, repo := range paths {
+		resolved, evalErr := filepath.EvalSymlinks(repo)
+		if evalErr != nil {
+			resolved = repo
+		}
+		assert.Contains(t, trusted, resolved)
+	}
 }

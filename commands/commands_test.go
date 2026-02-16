@@ -193,6 +193,83 @@ func TestConfigCmd_Path(t *testing.T) {
 	assert.Contains(t, string(out), "config.yaml")
 }
 
+func TestConfigCmd_TrustAndUntrust(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	require.NoError(t, os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755))
+
+	oldWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(repoRoot))
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWd)
+	})
+
+	config.CfgFile = filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, config.InitConfig())
+
+	commands.RootCmd.SetArgs([]string{"config", "trust"})
+	err = commands.RootCmd.Execute()
+	require.NoError(t, err)
+
+	trusted, err := config.IsRepositoryTrusted(repoRoot)
+	require.NoError(t, err)
+	assert.True(t, trusted)
+
+	commands.RootCmd.SetArgs([]string{"config", "untrust"})
+	err = commands.RootCmd.Execute()
+	require.NoError(t, err)
+
+	trusted, err = config.IsRepositoryTrusted(repoRoot)
+	require.NoError(t, err)
+	assert.False(t, trusted)
+}
+
+func TestConfigCmd_TrustedAndTrustStatus(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	require.NoError(t, os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755))
+
+	config.CfgFile = filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, config.InitConfig())
+	require.NoError(t, config.TrustRepository(repoRoot))
+
+	resolvedRoot, err := config.ResolveRepositoryRootFromPath(repoRoot)
+	require.NoError(t, err)
+
+	captureRootOutput := func(args ...string) string {
+		oldStdout := os.Stdout
+		r, w, pipeErr := os.Pipe()
+		require.NoError(t, pipeErr)
+
+		os.Stdout = w
+		commands.RootCmd.SetArgs(args)
+		execErr := commands.RootCmd.Execute()
+
+		require.NoError(t, w.Close())
+		os.Stdout = oldStdout
+
+		out, readErr := io.ReadAll(r)
+		require.NoError(t, readErr)
+		require.NoError(t, r.Close())
+		require.NoError(t, execErr)
+		return string(out)
+	}
+
+	// config trusted (list)
+	out := captureRootOutput("config", "trusted")
+	assert.Contains(t, string(out), resolvedRoot)
+
+	// config trust --status
+	out2 := captureRootOutput("config", "trust", "--status", repoRoot)
+	assert.Contains(t, string(out2), "Trusted: yes")
+	assert.Contains(t, string(out2), resolvedRoot)
+}
+
 func TestCacheCmd_Stats(t *testing.T) {
 	tmpDir := t.TempDir()
 	config.CfgFile = filepath.Join(tmpDir, "config.yaml")

@@ -60,6 +60,20 @@ brew upgrade gaia
 
 Gaia stores its configuration in `~/.config/gaia/config.yaml`. The configuration file is automatically created on first run with sensible defaults.
 
+### Project-Local Overrides (`.gaia.yaml`)
+
+When you run Gaia inside a project, Gaia looks for a local `.gaia.yaml` (from your current directory up to the git repository root).
+
+- Local config is useful for project-specific `roles.*` prompts and `tools.*` actions.
+- On first detection, Gaia asks whether you trust that repository.
+- If trusted, local settings override your user config for that repository.
+- Trust decisions are stored in `~/.config/gaia/trusted-repos.yaml` and reused on next runs.
+- In non-interactive mode (CI, piped execution), untrusted local config is ignored and Gaia uses user/global config only.
+
+Configuration precedence is:
+
+`CLI flags > env vars > local .gaia.yaml > ~/.config/gaia/config.yaml > built-in defaults`
+
 ### Basic Configuration
 
 - `model`: The language model to use (default: "mistral" for Ollama, "gpt-4o-mini" for OpenAI, "mistral-medium-latest" for Mistral)
@@ -215,6 +229,21 @@ gaia config path
 
 # Create default configuration file
 gaia config create
+
+# Trust local project overrides for current repository
+gaia config trust
+
+# Remove trust for current repository
+gaia config untrust
+
+# Show trust status for current repository
+gaia config trust --status
+
+# List all trusted repositories
+gaia config trusted
+
+# Show trust status for a specific path/repository
+gaia config trusted /path/to/repo
 ```
 
 ### Using Different Roles
