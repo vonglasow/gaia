@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -15,8 +16,8 @@ import (
 
 	"gaia/api"
 	"gaia/config"
+	"gaia/internal/termio"
 
-	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -222,6 +223,101 @@ var PathCmd = &cobra.Command{
 	},
 }
 
+var TrustCmd = &cobra.Command{
+	Use:   "trust [path]",
+	Short: "Trust local .gaia.yaml overrides for a repository",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		target := "."
+		if len(args) == 1 {
+			target = args[0]
+		}
+		repoRoot, err := config.ResolveRepositoryRootFromPath(target)
+		if err != nil {
+			return fmt.Errorf("resolve repository root from %q: %w", target, err)
+		}
+
+		statusOnly, _ := cmd.Flags().GetBool("status")
+		if statusOnly {
+			trusted, err := config.IsRepositoryTrusted(repoRoot)
+			if err != nil {
+				return fmt.Errorf("read trust status for %q: %w", repoRoot, err)
+			}
+			if trusted {
+				fmt.Printf("Trusted: yes (%s)\n", repoRoot)
+			} else {
+				fmt.Printf("Trusted: no (%s)\n", repoRoot)
+			}
+			return nil
+		}
+
+		if err := config.TrustRepository(repoRoot); err != nil {
+			return fmt.Errorf("trust repository %q: %w", repoRoot, err)
+		}
+		fmt.Printf("Trusted repository: %s\n", repoRoot)
+		fmt.Printf("Local overrides file (if present): %s\n", filepath.Join(repoRoot, ".gaia.yaml"))
+		return nil
+	},
+}
+
+var TrustedCmd = &cobra.Command{
+	Use:   "trusted [path]",
+	Short: "List trusted repositories or show trust status",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 1 {
+			repoRoot, err := config.ResolveRepositoryRootFromPath(args[0])
+			if err != nil {
+				return fmt.Errorf("resolve repository root from %q: %w", args[0], err)
+			}
+			trusted, err := config.IsRepositoryTrusted(repoRoot)
+			if err != nil {
+				return fmt.Errorf("read trust status for %q: %w", repoRoot, err)
+			}
+			if trusted {
+				fmt.Printf("Trusted: yes (%s)\n", repoRoot)
+			} else {
+				fmt.Printf("Trusted: no (%s)\n", repoRoot)
+			}
+			return nil
+		}
+
+		trustedRepos, err := config.ListTrustedRepositories()
+		if err != nil {
+			return fmt.Errorf("list trusted repositories: %w", err)
+		}
+		if len(trustedRepos) == 0 {
+			fmt.Println("No trusted repositories found")
+			return nil
+		}
+		for _, repo := range trustedRepos {
+			fmt.Println(repo)
+		}
+		return nil
+	},
+}
+
+var UntrustCmd = &cobra.Command{
+	Use:   "untrust [path]",
+	Short: "Remove trust for local .gaia.yaml overrides",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		target := "."
+		if len(args) == 1 {
+			target = args[0]
+		}
+		repoRoot, err := config.ResolveRepositoryRootFromPath(target)
+		if err != nil {
+			return fmt.Errorf("resolve repository root from %q: %w", target, err)
+		}
+		if err := config.UntrustRepository(repoRoot); err != nil {
+			return fmt.Errorf("untrust repository %q: %w", repoRoot, err)
+		}
+		fmt.Printf("Removed trust for repository: %s\n", repoRoot)
+		return nil
+	},
+}
+
 var AskCmd = &cobra.Command{
 	Use:   "ask [string]",
 	Short: "Ask to a model",
@@ -294,12 +390,7 @@ var ChatCmd = &cobra.Command{
 }
 
 func readStdin() string {
-	stat, err := os.Stdin.Stat()
-	if err != nil {
-		// If we can't stat stdin, assume it's not available and return empty
-		return ""
-	}
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
+	if termio.HasPipedStdin() {
 		buf := make([]byte, 4096)
 		n, err := os.Stdin.Read(buf)
 		if err != nil && err != io.EOF {
@@ -322,6 +413,7 @@ func init() {
 		"Path to an alternative YAML configuration file (or $GAIA_CONFIG)",
 	)
 	ListCmd.Flags().BoolP("short", "s", false, "Truncate long values (e.g. role prompts) to 80 characters")
+	TrustCmd.Flags().Bool("status", false, "Show trust status instead of modifying it")
 }
 
 var buildCommandTreeOnce sync.Once
@@ -334,7 +426,7 @@ func BuildCommandTree() {
 }
 
 func buildCommandTree() {
-	ConfigCmd.AddCommand(ListCmd, SetCmd, GetCmd, PathCmd, CreateCmd)
+	ConfigCmd.AddCommand(ListCmd, SetCmd, GetCmd, PathCmd, CreateCmd, TrustCmd, UntrustCmd, TrustedCmd)
 	CacheCmd.AddCommand(CacheClearCmd, CacheStatsCmd, CacheListCmd, CacheDumpCmd)
 	AskCmd.Flags().StringP("role", "r", "", "Specify role code (default, describe, code)")
 	_ = viper.BindPFlag("systemrole", AskCmd.Flags().Lookup("role"))
@@ -492,7 +584,7 @@ func getToolActionConfig(tool, action string) (map[string]interface{}, error) {
 // promptForContext allows user to add or modify context.
 // Uses Bubble Tea TUI when stdout is a terminal, otherwise falls back to line-based input.
 func promptForContext(initialContext string) (string, error) {
-	if isatty.IsTerminal(os.Stdout.Fd()) {
+	if termio.HasTTYStdout() {
 		return runContextPromptTUI(initialContext)
 	}
 	reader := bufio.NewReader(os.Stdin)
@@ -544,7 +636,7 @@ func promptForContext(initialContext string) (string, error) {
 // promptForConfirmation asks user to confirm before executing.
 // Uses Bubble Tea TUI when stdout is a terminal, otherwise falls back to line-based input.
 func promptForConfirmation(message string) (bool, error) {
-	if isatty.IsTerminal(os.Stdout.Fd()) {
+	if termio.HasTTYStdout() {
 		return runConfirmationPromptTUI(message, "Confirm")
 	}
 	reader := bufio.NewReader(os.Stdin)
