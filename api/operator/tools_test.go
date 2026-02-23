@@ -67,6 +67,7 @@ func TestDefaultToolRegistry(t *testing.T) {
 	tool := r.Get(RunCmdName)
 	if tool == nil {
 		t.Fatal("DefaultToolRegistry should register run_cmd")
+		return
 	}
 	if tool.Name != RunCmdName {
 		t.Errorf("tool.Name = %q, want %q", tool.Name, RunCmdName)
@@ -85,6 +86,7 @@ func TestDefaultToolRegistry_nilRunner(t *testing.T) {
 	tool := r.Get(RunCmdName)
 	if tool == nil {
 		t.Fatal("registry should still have run_cmd")
+		return
 	}
 	// Exec with nil runner should return "", "", nil (no panic)
 	stdout, stderr, err := tool.Exec(context.Background(), map[string]string{"cmd": "x"})

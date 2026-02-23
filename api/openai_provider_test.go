@@ -11,8 +11,8 @@ func TestNewOpenAIProvider(t *testing.T) {
 	provider := NewOpenAIProvider()
 	if provider == nil {
 		t.Fatal("expected non-nil provider")
+		return
 	}
-
 	if provider.client == nil {
 		t.Error("expected non-nil HTTP client")
 	}

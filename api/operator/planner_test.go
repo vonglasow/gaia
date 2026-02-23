@@ -35,6 +35,8 @@ func Test_extractJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := extractJSON(tt.in)
+		// Test-only: controlled input; compare semantic JSON equality.
+		// nosemgrep: go.lang.security.deserialization.unsafe-deserialization-interface.go-unsafe-deserialization-interface
 		var j1, j2 interface{}
 		_ = json.Unmarshal([]byte(got), &j1)
 		_ = json.Unmarshal([]byte(tt.want), &j2)

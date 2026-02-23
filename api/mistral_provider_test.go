@@ -11,8 +11,8 @@ func TestNewMistralProvider(t *testing.T) {
 	provider := NewMistralProvider()
 	if provider == nil {
 		t.Fatal("expected non-nil provider")
+		return
 	}
-
 	if provider.client == nil {
 		t.Error("expected non-nil HTTP client")
 	}
