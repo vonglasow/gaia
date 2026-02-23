@@ -3,13 +3,14 @@ module gaia
 go 1.26
 
 require (
-	github.com/charmbracelet/bubbles v0.21.0
+	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -47,5 +48,4 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
