@@ -23,6 +23,7 @@ and support for different interaction modes.
 - 🤖 Automatic role detection based on message content
 - 📦 Automatic model management (pull if not present)
 - 💾 Response caching for faster repeated queries
+- 🧹 Optional sanitization of prompts before LLM (reduce noise and tokens; configurable levels)
 - 🔌 Support for local (Ollama) and remote (OpenAI, Mistral) APIs
 - 🛠️ Tool integration for executing external commands
 - 📥 Stdin support for piping content
@@ -84,6 +85,19 @@ Configuration precedence is:
 
 - `cache.enabled`: Enable/disable response caching (default: `true`)
 - `cache.dir`: Cache directory path (default: `~/.config/gaia/cache`)
+
+### Sanitize before LLM
+
+Optional preprocessing to reduce noise and token usage before sending messages to the model:
+
+- `sanitize_before_llm`: Enable/disable sanitization (default: `false`)
+- `sanitize.level`: Filter intensity — `none`, `light`, or `aggressive` (default: `light`)
+  - **light**: Removes debug/metadata lines, timestamps, obvious duplicates, collapses extra newlines
+  - **aggressive**: In addition, removes long unstructured runs and redundant sections
+- `sanitize.max_tokens_after`: Cap total tokens after sanitization (default: `0` = no cap)
+- `sanitize.log_stats`: Log token counts and filtering stats to stderr when sanitization runs (default: `true`)
+
+The last user message is always preserved. When enabled, a one-line summary is printed to stderr, e.g. `[sanitize] tokens before=1200 after=800 removed≈400 ms=2`.
 
 ### Auto-Role Detection
 

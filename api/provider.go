@@ -92,6 +92,7 @@ func sendMessageInternal(msg string, printResponse bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	request, _ = applySanitizeIfEnabled(request)
 
 	if viper.GetBool("debug") {
 		model := request.Model

@@ -20,7 +20,8 @@ var validKeys = map[string]bool{
 	"roles.commit": true, "roles.branch": true,
 	"cache.enabled": true, "cache.dir": true, "cache.bypass": true, "cache.refresh": true,
 	"auto_role.enabled": true, "auto_role.mode": true,
-	"debug": true,
+	"debug":               true,
+	"sanitize_before_llm": true, "sanitize.level": true, "sanitize.max_tokens_after": true, "sanitize.log_stats": true,
 }
 
 // IsValidKey checks if a key is valid for configuration
@@ -48,6 +49,11 @@ func IsValidKey(key string) bool {
 
 	// Allow any tools.* key (e.g. tools.git.commit.role)
 	if strings.HasPrefix(key, "tools.") {
+		return true
+	}
+
+	// Allow any sanitize.* key
+	if strings.HasPrefix(key, "sanitize.") || key == "sanitize_before_llm" {
 		return true
 	}
 
@@ -136,6 +142,12 @@ func setDefaults() {
 	// When true (default), shell commands that exit with code 1 are treated as success (e.g. git diff with no changes).
 	// When false, exit code 1 is reported as an error.
 	viper.SetDefault("operator.treat_exit_code_1_as_success", true)
+
+	// Sanitize before LLM: reduce noise and token usage (none | light | aggressive)
+	viper.SetDefault("sanitize_before_llm", false)
+	viper.SetDefault("sanitize.level", "light")
+	viper.SetDefault("sanitize.max_tokens_after", 0) // 0 = no cap
+	viper.SetDefault("sanitize.log_stats", true)
 }
 
 func InitConfig() error {

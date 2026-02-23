@@ -442,6 +442,7 @@ func SendRequestNoStream(request APIRequest) (string, error) {
 	if err := CheckAndPullIfRequired(); err != nil {
 		return "", err
 	}
+	request, _ = applySanitizeIfEnabled(request)
 	provider, err := GetProvider()
 	if err != nil {
 		return "", err
