@@ -1,0 +1,37 @@
+group: common.shell
+type: keyword
+values:
+  - command
+  - run
+  - execute
+  - terminal
+  - bash
+  - zsh
+  - sh
+  - shell
+  - cd
+  - ls
+  - grep
+  - find
+  - mkdir
+  - rm
+  - cp
+  - mv
+  - cat
+  - echo
+  - sudo
+  - chmod
+  - chown
+  - ps
+  - kill
+  - pkill
+  - systemctl
+  - service
+  - install
+  - uninstall
+  - package
+  - apt
+  - yum
+  - brew
+  - pip
+  - npm

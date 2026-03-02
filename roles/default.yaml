@@ -1,0 +1,8 @@
+name: default
+description: Default assistant for general programming and system administration tasks
+priority: 0
+enabled: true
+system_prompt: ""
+matching:
+  threshold: 0.0
+  signals: []

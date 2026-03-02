@@ -344,23 +344,23 @@ func TestBuildDetectionCacheKey(t *testing.T) {
 	message := "test message"
 	availableRoles := []string{"default", "shell", "code"}
 
-	key1, err := buildDetectionCacheKey(message, availableRoles)
+	key1, err := buildDetectionCacheKey(message, availableRoles, "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, key1, "cache key should not be empty")
 	assert.True(t, len(key1) > 20, "cache key should be reasonably long")
 
 	// Same input should produce same key
-	key2, err := buildDetectionCacheKey(message, availableRoles)
+	key2, err := buildDetectionCacheKey(message, availableRoles, "")
 	require.NoError(t, err)
 	assert.Equal(t, key1, key2, "same input should produce same cache key")
 
 	// Different message should produce different key
-	key3, err := buildDetectionCacheKey("different message", availableRoles)
+	key3, err := buildDetectionCacheKey("different message", availableRoles, "")
 	require.NoError(t, err)
 	assert.NotEqual(t, key1, key3, "different message should produce different cache key")
 
 	// Different roles should produce different key
-	key4, err := buildDetectionCacheKey(message, []string{"default", "shell"})
+	key4, err := buildDetectionCacheKey(message, []string{"default", "shell"}, "")
 	require.NoError(t, err)
 	assert.NotEqual(t, key1, key4, "different roles should produce different cache key")
 }
@@ -498,7 +498,7 @@ func TestDetectRole_CacheDisabled(t *testing.T) {
 	assert.Equal(t, "shell", result.Role)
 
 	// Verify no cache file was created
-	cacheKey, err := buildDetectionCacheKey(message, getAvailableRoles())
+	cacheKey, err := buildDetectionCacheKey(message, getAvailableRoles(), "")
 	require.NoError(t, err)
 	_, ok, _ := readDetectionCache(cacheKey)
 	assert.False(t, ok, "should not have cached when cache is disabled")

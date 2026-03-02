@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 
+	"gaia/config/roles"
+
 	"github.com/spf13/viper"
 )
 
@@ -409,14 +411,17 @@ func getAvailableRoles() []string {
 	return roles
 }
 
-// buildDetectionCacheKey creates a cache key for role detection results
-func buildDetectionCacheKey(message string, availableRoles []string) (string, error) {
+// buildDetectionCacheKey creates a cache key for role detection results.
+// rolesDir is optional; when set (YAML mode) it is included so cache is per roles directory.
+func buildDetectionCacheKey(message string, availableRoles []string, rolesDir string) (string, error) {
 	payload := struct {
 		Message        string   `json:"message"`
 		AvailableRoles []string `json:"available_roles"`
+		RolesDir       string   `json:"roles_dir,omitempty"`
 	}{
 		Message:        message,
 		AvailableRoles: availableRoles,
+		RolesDir:       rolesDir,
 	}
 
 	var buf bytes.Buffer
@@ -496,12 +501,59 @@ func DetectRole(message string, debug bool) (*DetectionResult, error) {
 		}, nil
 	}
 
-	// Get available roles
+	// YAML-driven roles: when roles.directory is set and loads successfully, use scoring
+	cfg, useYAML := getRolesConfig()
+	if useYAML && cfg.AutoSelect {
+		roleList, err := getLoadedRoles()
+		if err == nil && len(roleList) > 0 {
+			if cacheEnabled() {
+				roleNames := make([]string, len(roleList))
+				for i := range roleList {
+					roleNames[i] = roleList[i].Name
+				}
+				cacheKey, err := buildDetectionCacheKey(message, roleNames, cfg.Directory)
+				if err == nil {
+					if cached, ok, err := readDetectionCache(cacheKey); err == nil && ok {
+						if debug {
+							fmt.Fprintf(os.Stderr, "[DEBUG] Using cached role detection: %s (method: %s, reason: %s)\n",
+								cached.Role, cached.Method, cached.Reason)
+						}
+						return cached, nil
+					}
+				}
+			}
+			selected := roles.SelectRole(message, roleList, cfg)
+			score := roles.ScoreRole(selected, message)
+			result := &DetectionResult{
+				Role:   selected.Name,
+				Method: "scoring",
+				Score:  score,
+				Reason: "YAML role scoring",
+			}
+			if cacheEnabled() {
+				roleNames := make([]string, len(roleList))
+				for i := range roleList {
+					roleNames[i] = roleList[i].Name
+				}
+				if cacheKey, err := buildDetectionCacheKey(message, roleNames, cfg.Directory); err == nil {
+					_ = writeDetectionCache(cacheKey, result)
+				}
+			}
+			if debug {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Auto-detected role: %s (method: %s, score: %.2f, reason: %s)\n",
+					result.Role, result.Method, result.Score, result.Reason)
+			}
+			return result, nil
+		}
+		// Fall through to legacy when dir missing or load failed
+	}
+
+	// Get available roles (legacy)
 	availableRoles := getAvailableRoles()
 
 	// Check cache first
 	if cacheEnabled() {
-		cacheKey, err := buildDetectionCacheKey(message, availableRoles)
+		cacheKey, err := buildDetectionCacheKey(message, availableRoles, "")
 		if err == nil {
 			if cached, ok, err := readDetectionCache(cacheKey); err == nil && ok {
 				if debug {
@@ -559,7 +611,7 @@ func DetectRole(message string, debug bool) (*DetectionResult, error) {
 
 	// Cache the result
 	if cacheEnabled() {
-		cacheKey, err := buildDetectionCacheKey(message, availableRoles)
+		cacheKey, err := buildDetectionCacheKey(message, availableRoles, "")
 		if err == nil {
 			_ = writeDetectionCache(cacheKey, result)
 		}

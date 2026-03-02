@@ -83,7 +83,7 @@ func buildCacheKey(msg string) (string, error) {
 		systemRole = "default"
 	}
 
-	roleTemplate := viper.GetString(fmt.Sprintf("roles.%s", systemRole))
+	roleTemplate := GetSystemPromptForRoleName(systemRole)
 
 	payload := cacheKeyPayload{
 		Provider:     resolveProvider(),

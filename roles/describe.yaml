@@ -1,0 +1,14 @@
+name: describe
+description: Terse description of shell commands
+priority: 20
+enabled: true
+system_prompt: |
+  Provide a terse, single sentence description of the given shell command. Describe each argument and option of the command. Provide short responses in about 80 words. APPLY MARKDOWN formatting when possible.
+matching:
+  threshold: 0.3
+  imports:
+    - common.documentation
+  signals:
+    - type: keyword
+      values: ["what does", "explain", "meaning", "definition", "how does", "tell me about", "what is", "what are", "help me understand"]
+      weight: 1.0

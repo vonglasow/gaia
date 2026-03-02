@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -290,11 +289,7 @@ func buildRequestPayload(userMessage string) (APIRequest, error) {
 		systemRole = "default"
 	}
 
-	roleTemplate := viper.GetString(fmt.Sprintf("roles.%s", systemRole))
-	systemContent := ""
-	if roleTemplate != "" {
-		systemContent = fmt.Sprintf(roleTemplate, os.Getenv("SHELL"), runtime.GOOS)
-	}
+	systemContent := GetSystemPromptForRoleName(systemRole)
 
 	// Pre-allocate with exact capacity: system message + chat history + user message
 	messages := make([]Message, 0, len(chatHistory)+2)

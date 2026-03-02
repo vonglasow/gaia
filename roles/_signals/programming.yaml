@@ -1,0 +1,40 @@
+group: common.programming
+type: keyword
+values:
+  - function
+  - class
+  - def
+  - import
+  - return
+  - if
+  - else
+  - for
+  - while
+  - variable
+  - array
+  - list
+  - dict
+  - string
+  - code
+  - programming
+  - algorithm
+  - api
+  - endpoint
+  - json
+  - xml
+  - database
+  - sql
+  - query
+  - python
+  - javascript
+  - java
+  - go
+  - rust
+  - php
+  - ruby
+  - migration
+  - schema
+  - table
+  - type
+  - bool
+  - int

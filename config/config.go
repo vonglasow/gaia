@@ -18,7 +18,9 @@ var validKeys = map[string]bool{
 	"model": true, "host": true, "port": true,
 	"roles.default": true, "roles.describe": true, "roles.shell": true, "roles.code": true,
 	"roles.commit": true, "roles.branch": true,
-	"cache.enabled": true, "cache.dir": true, "cache.bypass": true, "cache.refresh": true,
+	"roles.directory": true, "roles.auto_select": true, "roles.default_role": true,
+	"roles.scoring.min_threshold": true,
+	"cache.enabled":               true, "cache.dir": true, "cache.bypass": true, "cache.refresh": true,
 	"auto_role.enabled": true, "auto_role.mode": true,
 	"debug":               true,
 	"sanitize_before_llm": true, "sanitize.level": true, "sanitize.max_tokens_after": true, "sanitize.log_stats": true,
@@ -98,7 +100,12 @@ func setDefaults() {
 	viper.SetDefault("tools.git.branch.context_command", "git diff")
 	viper.SetDefault("tools.git.branch.role", "branch")
 	viper.SetDefault("tools.git.branch.execute_command", "git checkout -b {response}")
-	// Auto-role detection defaults
+	// YAML-driven roles (optional): when roles.directory is set and exists, roles are loaded from YAML
+	viper.SetDefault("roles.directory", "")
+	viper.SetDefault("roles.auto_select", true)
+	viper.SetDefault("roles.default_role", "default")
+	viper.SetDefault("roles.scoring.min_threshold", 0.3)
+	// Auto-role detection defaults (used when roles.directory is not set)
 	viper.SetDefault("auto_role.enabled", true)
 	viper.SetDefault("auto_role.mode", "hybrid") // off | heuristic | hybrid
 

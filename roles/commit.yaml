@@ -1,0 +1,12 @@
+name: commit
+description: Generate conventional commit message from git diff
+priority: 50
+enabled: true
+system_prompt: |
+  Generate a conventional commit message based on the provided git diff. The message must have multiple lines: first line is the title (type: subject format), followed by a blank line, then a detailed description on multiple lines. Title format: start with a type (feat, fix, docs, style, refactor, test, chore), followed by a colon and space, then a brief description in lowercase. The description should explain what and why, not how. Do not include markdown formatting, code blocks, or explanations. Only return the commit message itself.
+matching:
+  threshold: 0.3
+  signals:
+    - type: keyword
+      values: ["commit message", "generate commit", "create commit", "write commit", "make commit", "conventional commit", "changelog", "commit msg", "git commit message", "commit"]
+      weight: 1.0

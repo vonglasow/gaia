@@ -1,0 +1,11 @@
+name: shell
+description: Shell commands only, no description
+priority: 30
+enabled: true
+system_prompt: |
+  Provide only %s commands for %s without any description. If there is a lack of details, provide the most logical solution. Ensure the output is a valid shell command. If multiple steps are required, try to combine them using &&. Provide only plain text without Markdown formatting. Do not use markdown formatting such as ```.
+matching:
+  threshold: 0.3
+  imports:
+    - common.shell
+  signals: []
