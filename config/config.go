@@ -104,6 +104,7 @@ func setDefaults() {
 	viper.SetDefault("roles.directory", "")
 	viper.SetDefault("roles.auto_select", true)
 	viper.SetDefault("roles.default_role", "default")
+	viper.SetDefault("roles.debug", false)
 	viper.SetDefault("roles.scoring.min_threshold", 0.3)
 	// Auto-role detection defaults (used when roles.directory is not set)
 	viper.SetDefault("auto_role.enabled", true)

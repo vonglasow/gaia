@@ -436,6 +436,8 @@ func buildCommandTree() {
 	_ = viper.BindPFlag("cache.refresh", RootCmd.PersistentFlags().Lookup("refresh-cache"))
 	RootCmd.PersistentFlags().Bool("debug", false, "Enable debug output (shows role detection info)")
 	_ = viper.BindPFlag("debug", RootCmd.PersistentFlags().Lookup("debug"))
+	RootCmd.PersistentFlags().Bool("roles-debug", false, "Enable roles debug (inheritance, scores, selection)")
+	_ = viper.BindPFlag("roles.debug", RootCmd.PersistentFlags().Lookup("roles-debug"))
 	RootCmd.AddCommand(ConfigCmd, CacheCmd, VersionCmd, AskCmd, ChatCmd, ToolCmd, InvestigateCmd)
 }
 

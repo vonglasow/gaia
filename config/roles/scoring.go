@@ -3,14 +3,15 @@ package roles
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
 // ScoreRole returns a score for the role against the input. Higher = better match.
 // Keyword matches add weight per occurrence; regex matches add weight per match;
-// negative signals subtract. Priority is added as a small factor. Score is
-// normalized by input length to avoid bias on long prompts.
-func ScoreRole(role Role, input string) float64 {
+// negative signals subtract. Priority is added as a small factor. Role.Weight
+// multiplies the result. Score is normalized by input length to avoid bias on long prompts.
+func ScoreRole(role ResolvedRole, input string) float64 {
 	inputLower := strings.ToLower(strings.TrimSpace(input))
 	inputLen := len(strings.Fields(inputLower))
 	if inputLen == 0 {
@@ -71,14 +72,19 @@ func ScoreRole(role Role, input string) float64 {
 	normalizer := 1.0 + float64(inputLen)/50.0
 	score = score / normalizer
 
+	// Apply role weight
+	if role.Weight > 0 {
+		score *= role.Weight
+	}
+
 	return score
 }
 
 // SelectRole chooses the best role for the input: only enabled roles are scored,
 // threshold (role-specific or global) is applied, highest score wins, with
-// fallback to default_role if none qualify.
-func SelectRole(input string, roles []Role, cfg RolesConfig) Role {
-	var defaultRole Role
+// fallback to default_role if none qualify. When roles.debug is true, logs scores and selection.
+func SelectRole(input string, roles []ResolvedRole, cfg RolesConfig) ResolvedRole {
+	var defaultRole ResolvedRole
 	for i := range roles {
 		if roles[i].Name == cfg.DefaultRole {
 			defaultRole = roles[i]
@@ -86,7 +92,7 @@ func SelectRole(input string, roles []Role, cfg RolesConfig) Role {
 		}
 	}
 	if defaultRole.Name == "" {
-		defaultRole = Role{Name: cfg.DefaultRole}
+		defaultRole = ResolvedRole{Name: cfg.DefaultRole, Enabled: true, Weight: 1.0}
 	}
 
 	threshold := cfg.MinThreshold
@@ -94,10 +100,12 @@ func SelectRole(input string, roles []Role, cfg RolesConfig) Role {
 		threshold = 0.3
 	}
 
-	var best Role
+	var best ResolvedRole
 	bestScore := -1e9
+	var orderNames []string
+
 	for _, r := range roles {
-		if r.Enabled != nil && !*r.Enabled {
+		if !r.Enabled {
 			continue
 		}
 		th := threshold
@@ -105,20 +113,37 @@ func SelectRole(input string, roles []Role, cfg RolesConfig) Role {
 			th = r.Matching.Threshold
 		}
 		s := ScoreRole(r, input)
+		if IsRolesDebug() {
+			LogScore(r.Name, s, th, s >= th && s > bestScore)
+		}
 		if s >= th && s > bestScore {
 			bestScore = s
 			best = r
 		}
 	}
+
 	if best.Name != "" {
+		if IsRolesDebug() {
+			for _, r := range roles {
+				if r.Enabled {
+					orderNames = append(orderNames, r.Name)
+				}
+			}
+			sort.Strings(orderNames)
+			LogFinalSelection(best, orderNames)
+			LogSystemPromptPreview(best.Name, best.SystemPrompt, 80)
+		}
 		return best
+	}
+	if IsRolesDebug() {
+		LogFinalSelection(defaultRole, []string{cfg.DefaultRole})
 	}
 	return defaultRole
 }
 
 // SystemPromptForRole returns the system prompt for the role, with optional
 // template args (e.g. SHELL, GOOS). If the role has no SystemPrompt, returns empty.
-func SystemPromptForRole(r Role, args ...string) string {
+func SystemPromptForRole(r ResolvedRole, args ...string) string {
 	if r.SystemPrompt == "" {
 		return ""
 	}

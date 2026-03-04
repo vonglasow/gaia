@@ -1,13 +1,31 @@
 package roles
 
-// Role represents a parsed role from YAML.
+// Role represents a parsed role from YAML (before inheritance resolution).
 type Role struct {
 	Name         string         `yaml:"name"`
 	Description  string         `yaml:"description"`
-	Priority     int            `yaml:"priority"`
 	Enabled      *bool          `yaml:"enabled"` // nil = not set, treated as true
+	Priority     *int           `yaml:"priority"`
+	Weight       *float64       `yaml:"weight"`
+	Mode         *string        `yaml:"mode"`
+	Exclusive    *bool          `yaml:"exclusive"`
+	Extends      []string       `yaml:"extends"`
 	SystemPrompt string         `yaml:"system_prompt"`
 	Matching     MatchingConfig `yaml:"matching"`
+}
+
+// ResolvedRole is a role after inheritance resolution, with concrete values.
+// Used for scoring and selection.
+type ResolvedRole struct {
+	Name         string
+	Description  string
+	Enabled      bool
+	Priority     int
+	Weight       float64
+	Mode         string
+	Exclusive    bool
+	SystemPrompt string
+	Matching     MatchingConfig
 }
 
 // MatchingConfig holds threshold, imports, and signals for role matching.

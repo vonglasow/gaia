@@ -3,6 +3,7 @@ package roles
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -23,21 +24,21 @@ matching:
 		t.Fatal(err)
 	}
 
-	roles, err := LoadRoles(dir)
+	roleList, err := LoadRoles(dir)
 	if err != nil {
 		t.Fatalf("LoadRoles: %v", err)
 	}
-	if len(roles) != 1 {
-		t.Fatalf("expected 1 role, got %d", len(roles))
+	if len(roleList) != 1 {
+		t.Fatalf("expected 1 role, got %d", len(roleList))
 	}
-	if roles[0].Name != "test" {
-		t.Errorf("role name = %q, want test", roles[0].Name)
+	if roleList[0].Name != "test" {
+		t.Errorf("role name = %q, want test", roleList[0].Name)
 	}
-	if roles[0].SystemPrompt != "You are a test." {
-		t.Errorf("system_prompt = %q", roles[0].SystemPrompt)
+	if roleList[0].SystemPrompt != "You are a test." {
+		t.Errorf("system_prompt = %q", roleList[0].SystemPrompt)
 	}
-	if len(roles[0].Matching.Signals) != 1 {
-		t.Errorf("expected 1 signal, got %d", len(roles[0].Matching.Signals))
+	if len(roleList[0].Matching.Signals) != 1 {
+		t.Errorf("expected 1 signal, got %d", len(roleList[0].Matching.Signals))
 	}
 }
 
@@ -67,30 +68,30 @@ matching:
 		t.Fatal(err)
 	}
 
-	roles, err := LoadRoles(dir)
+	roleList, err := LoadRoles(dir)
 	if err != nil {
 		t.Fatalf("LoadRoles: %v", err)
 	}
-	if len(roles) != 1 {
-		t.Fatalf("expected 1 role, got %d", len(roles))
+	if len(roleList) != 1 {
+		t.Fatalf("expected 1 role, got %d", len(roleList))
 	}
 	// Resolved signals should include the imported group (one Signal with multiple values)
-	if len(roles[0].Matching.Signals) != 1 {
-		t.Errorf("expected 1 signal group from import, got %d", len(roles[0].Matching.Signals))
+	if len(roleList[0].Matching.Signals) != 1 {
+		t.Errorf("expected 1 signal group from import, got %d", len(roleList[0].Matching.Signals))
 	}
-	if len(roles[0].Matching.Signals[0].Values) != 2 {
-		t.Errorf("expected 2 values in imported signal, got %d", len(roles[0].Matching.Signals[0].Values))
+	if len(roleList[0].Matching.Signals[0].Values) != 2 {
+		t.Errorf("expected 2 values in imported signal, got %d", len(roleList[0].Matching.Signals[0].Values))
 	}
 }
 
 func TestLoadRoles_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	roles, err := LoadRoles(dir)
+	roleList, err := LoadRoles(dir)
 	if err != nil {
 		t.Fatalf("LoadRoles: %v", err)
 	}
-	if len(roles) != 0 {
-		t.Errorf("expected 0 roles, got %d", len(roles))
+	if len(roleList) != 0 {
+		t.Errorf("expected 0 roles, got %d", len(roleList))
 	}
 }
 
@@ -116,5 +117,51 @@ matching:
 	_, err := LoadRoles(dir)
 	if err == nil {
 		t.Fatal("expected error for unknown import")
+	}
+}
+
+func TestLoadRoles_WithExtends(t *testing.T) {
+	dir := t.TempDir()
+	baseYaml := `name: base
+description: Base role
+system_prompt: "You are base."
+matching:
+  signals:
+    - type: keyword
+      values: [base]
+      weight: 1.0
+`
+	childYaml := `name: child
+extends: [base]
+system_prompt: "You are child."
+`
+	if err := os.WriteFile(filepath.Join(dir, "base.yaml"), []byte(baseYaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "child.yaml"), []byte(childYaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	roleList, err := LoadRoles(dir)
+	if err != nil {
+		t.Fatalf("LoadRoles: %v", err)
+	}
+	if len(roleList) != 2 {
+		t.Fatalf("expected 2 roles, got %d", len(roleList))
+	}
+	var child ResolvedRole
+	for _, r := range roleList {
+		if r.Name == "child" {
+			child = r
+			break
+		}
+	}
+	if child.Name != "child" {
+		t.Fatal("child role not found")
+	}
+	if !strings.Contains(child.SystemPrompt, "You are base.") || !strings.Contains(child.SystemPrompt, "You are child.") {
+		t.Errorf("child should inherit base prompt: %q", child.SystemPrompt)
+	}
+	if len(child.Matching.Signals) == 0 {
+		t.Error("child should inherit base signals")
 	}
 }

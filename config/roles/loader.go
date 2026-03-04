@@ -13,9 +13,9 @@ import (
 const signalsDirName = "_signals"
 
 // LoadRoles loads all role YAML files from dir (excluding _signals), resolves
-// signal imports from _signals, and returns roles sorted by priority (higher first).
+// signal imports and inheritance, and returns resolved roles sorted by priority (higher first).
 // Directory structure: dir/*.yaml = roles, dir/_signals/*.yaml = signal groups.
-func LoadRoles(dir string) ([]Role, error) {
+func LoadRoles(dir string) ([]ResolvedRole, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("roles directory is empty")
 	}
@@ -44,7 +44,7 @@ func LoadRoles(dir string) ([]Role, error) {
 		return nil, fmt.Errorf("read roles directory: %w", err)
 	}
 
-	var roles []Role
+	roleMap := make(map[string]Role)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".yaml") {
 			continue
@@ -61,22 +61,36 @@ func LoadRoles(dir string) ([]Role, error) {
 		if r.Name == "" {
 			r.Name = strings.TrimSuffix(strings.TrimSuffix(e.Name(), ".yaml"), ".yml")
 		}
-		// enabled: omit in YAML → nil → treat as true
 		if r.Enabled == nil {
 			t := true
 			r.Enabled = &t
 		}
-		if !*r.Enabled {
-			continue
-		}
 		if err := resolveImports(&r, groups); err != nil {
 			return nil, fmt.Errorf("role %s: %w", r.Name, err)
 		}
-		roles = append(roles, r)
+		roleMap[r.Name] = r
 	}
 
+	resolved, err := ResolveInheritance(roleMap)
+	if err != nil {
+		return nil, err
+	}
+
+	if IsRolesDebug() {
+		LogLoadedRoles(resolved)
+		LogInheritanceTree(roleMap)
+	}
+
+	// Return slice sorted by priority (higher first), deterministic by name when tie
+	roles := make([]ResolvedRole, 0, len(resolved))
+	for _, res := range resolved {
+		roles = append(roles, res)
+	}
 	sort.Slice(roles, func(i, j int) bool {
-		return roles[i].Priority > roles[j].Priority
+		if roles[i].Priority != roles[j].Priority {
+			return roles[i].Priority > roles[j].Priority
+		}
+		return roles[i].Name < roles[j].Name
 	})
 	return roles, nil
 }

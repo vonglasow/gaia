@@ -123,6 +123,16 @@ Roles define different interaction modes with their respective prompts. The avai
 **Custom Roles:**
 You can add custom roles by adding `roles.<role_name>` keys to your configuration file. Any role defined in the configuration will be available for use.
 
+**YAML role directory and inheritance:** When `roles.directory` is set to a
+directory path, Gaia loads roles from YAML files in that directory (one role per
+file). Roles can inherit from others with `extends: ["base", "other-role"]`.
+Parent prompts are concatenated first (separator `---`), then the child’s;
+signals, threshold, priority, weight, mode and exclusive are merged (child
+overrides when defined). Circular or missing parents cause a clear error.
+Resolution runs once at load time. Optional: `roles.debug` (or CLI
+`--roles-debug`) prints resolution and scoring to stderr with prefix `[ROLES
+DEBUG]`.
+
 **Note:** The list of available roles is dynamic and depends on your configuration. Use `gaia config list` to see all configured roles in your setup.
 
 ### Role Keywords (Auto-Detection)

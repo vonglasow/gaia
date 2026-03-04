@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	cachedRoles     []roles.Role
+	cachedRoles     []roles.ResolvedRole
 	cachedRolesDir  string
 	cachedRolesErr  error
 	cachedRolesOnce sync.Once
@@ -41,7 +41,7 @@ func getRolesConfig() (cfg roles.RolesConfig, useYAML bool) {
 
 // getLoadedRoles loads roles from roles.directory (once per dir) and caches.
 // Returns nil, nil when roles.directory is not set. Returns error when dir is set but load fails.
-func getLoadedRoles() ([]roles.Role, error) {
+func getLoadedRoles() ([]roles.ResolvedRole, error) {
 	cfg, useYAML := getRolesConfig()
 	if !useYAML {
 		clearRolesCache()

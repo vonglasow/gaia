@@ -137,6 +137,10 @@ gofmt -w .
 
 However, if pre-commit provides formatting hooks, **let pre-commit be the final arbiter**.
 
+### Documentation
+
+- Update only `README.md` if user-facing behavior changes or new features are added.
+
 ---
 
 ## Coding Style (Go)

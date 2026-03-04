@@ -5,8 +5,8 @@ import (
 )
 
 func TestScoreRole_Keyword(t *testing.T) {
-	r := Role{
-		Name: "code",
+	r := ResolvedRole{
+		Name: "code", Enabled: true, Weight: 1.0,
 		Matching: MatchingConfig{
 			Signals: []Signal{
 				{Type: "keyword", Values: []string{"function", "python"}, Weight: 1.0},
@@ -24,8 +24,8 @@ func TestScoreRole_Keyword(t *testing.T) {
 }
 
 func TestScoreRole_NegativeSignals(t *testing.T) {
-	r := Role{
-		Name: "code",
+	r := ResolvedRole{
+		Name: "code", Enabled: true, Weight: 1.0,
 		Matching: MatchingConfig{
 			Signals: []Signal{
 				{Type: "keyword", Values: []string{"code"}, Weight: 1.0},
@@ -43,15 +43,11 @@ func TestScoreRole_NegativeSignals(t *testing.T) {
 }
 
 func TestSelectRole_Threshold(t *testing.T) {
-	roles := []Role{
-		{Name: "default", Priority: 0, Matching: MatchingConfig{Signals: []Signal{}}},
-		{Name: "shell", Priority: 10, Matching: MatchingConfig{
+	roles := []ResolvedRole{
+		{Name: "default", Enabled: true, Weight: 1.0, Matching: MatchingConfig{Signals: []Signal{}}},
+		{Name: "shell", Enabled: true, Priority: 10, Weight: 1.0, Matching: MatchingConfig{
 			Signals: []Signal{{Type: "keyword", Values: []string{"run", "command"}, Weight: 1.0}},
 		}},
-	}
-	enabled := true
-	for i := range roles {
-		roles[i].Enabled = &enabled
 	}
 	cfg := RolesConfig{DefaultRole: "default", MinThreshold: 0.3}
 
@@ -67,11 +63,9 @@ func TestSelectRole_Threshold(t *testing.T) {
 }
 
 func TestSelectRole_DisabledRole(t *testing.T) {
-	enabled := true
-	disabled := false
-	roles := []Role{
-		{Name: "default", Priority: 0, Enabled: &enabled, Matching: MatchingConfig{}},
-		{Name: "shell", Priority: 10, Enabled: &disabled, Matching: MatchingConfig{
+	roles := []ResolvedRole{
+		{Name: "default", Enabled: true, Weight: 1.0, Matching: MatchingConfig{}},
+		{Name: "shell", Enabled: false, Priority: 10, Weight: 1.0, Matching: MatchingConfig{
 			Signals: []Signal{{Type: "keyword", Values: []string{"run"}, Weight: 1.0}},
 		}},
 	}
@@ -83,10 +77,9 @@ func TestSelectRole_DisabledRole(t *testing.T) {
 }
 
 func TestSelectRole_FallbackToDefault(t *testing.T) {
-	enabled := true
-	roles := []Role{
-		{Name: "default", Priority: 0, Enabled: &enabled, Matching: MatchingConfig{}},
-		{Name: "code", Priority: 10, Enabled: &enabled, Matching: MatchingConfig{
+	roles := []ResolvedRole{
+		{Name: "default", Enabled: true, Weight: 1.0, Matching: MatchingConfig{}},
+		{Name: "code", Enabled: true, Priority: 10, Weight: 1.0, Matching: MatchingConfig{
 			Signals: []Signal{{Type: "keyword", Values: []string{"xyz"}, Weight: 1.0}},
 		}},
 	}
@@ -98,7 +91,7 @@ func TestSelectRole_FallbackToDefault(t *testing.T) {
 }
 
 func TestSystemPromptForRole(t *testing.T) {
-	r := Role{SystemPrompt: "Use %s on %s."}
+	r := ResolvedRole{SystemPrompt: "Use %s on %s."}
 	out := SystemPromptForRole(r, "bash", "linux")
 	if out != "Use bash on linux." {
 		t.Errorf("SystemPromptForRole = %q", out)
