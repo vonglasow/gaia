@@ -10,152 +10,103 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 var CfgFile string
 
-var validKeys = map[string]bool{
-	"model": true, "host": true, "port": true,
-	"roles.default": true, "roles.describe": true, "roles.shell": true, "roles.code": true,
-	"roles.commit": true, "roles.branch": true,
-	"roles.directory": true, "roles.auto_select": true, "roles.default_role": true,
-	"roles.scoring.min_threshold": true,
-	"cache.enabled":               true, "cache.dir": true, "cache.bypass": true, "cache.refresh": true,
-	"auto_role.enabled": true, "auto_role.mode": true,
-	"debug":               true,
-	"sanitize_before_llm": true, "sanitize.level": true, "sanitize.max_tokens_after": true, "sanitize.log_stats": true,
+var kernelKeys = map[string]bool{
+	"config.validation": true,
+	"debug":             true,
+	"cache.refresh":     true,
+	"provider":          true,
+	"host":              true,
+	"port":              true,
+	"model":             true,
+	"timeout_seconds":   true,
+	"plugins.enabled":   true,
+	"plugins.disabled":  true,
 }
 
-// IsValidKey checks if a key is valid for configuration
-// This allows dynamic keys like auto_role.keywords.* and roles.*
+var (
+	pluginExactKeys  = map[string]map[string]bool{}
+	pluginPrefixKeys = map[string][]string{}
+)
+
+// RegisterPluginSchema registers config keys for a plugin.
+// Keys must be prefixed with "<plugin>." and may end with ".*" to allow any nested keys.
+func RegisterPluginSchema(pluginID string, keys []string) error {
+	if pluginID == "" {
+		return fmt.Errorf("plugin id is required for schema registration")
+	}
+	if pluginExactKeys[pluginID] == nil {
+		pluginExactKeys[pluginID] = map[string]bool{}
+	}
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		requiredPrefix := pluginID + "."
+		if !strings.HasPrefix(key, requiredPrefix) {
+			return fmt.Errorf("config key %q must be prefixed with %q", key, requiredPrefix)
+		}
+		if strings.HasSuffix(key, ".*") {
+			prefix := strings.TrimSuffix(key, "*")
+			pluginPrefixKeys[pluginID] = append(pluginPrefixKeys[pluginID], prefix)
+			continue
+		}
+		pluginExactKeys[pluginID][key] = true
+	}
+	return nil
+}
+
+// IsValidKey checks if a key is valid for configuration.
 func IsValidKey(key string) bool {
-	// Check exact matches first
-	if validKeys[key] {
+	if kernelKeys[key] {
 		return true
 	}
-
-	// Allow any roles.* key
-	if strings.HasPrefix(key, "roles.") {
-		return true
+	for _, keys := range pluginExactKeys {
+		if keys[key] {
+			return true
+		}
 	}
-
-	// Allow any auto_role.keywords.* key
-	if strings.HasPrefix(key, "auto_role.keywords.") {
-		return true
+	for _, prefixes := range pluginPrefixKeys {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(key, prefix) {
+				return true
+			}
+		}
 	}
-
-	// Allow any operator.* key
-	if strings.HasPrefix(key, "operator.") {
-		return true
-	}
-
-	// Allow any tools.* key (e.g. tools.git.commit.role)
-	if strings.HasPrefix(key, "tools.") {
-		return true
-	}
-
-	// Allow any sanitize.* key
-	if strings.HasPrefix(key, "sanitize.") || key == "sanitize_before_llm" {
-		return true
-	}
-
 	return false
-}
-
-// listKeyExact is the set of config keys that are string slices (not scalar).
-var listKeyExact = map[string]bool{
-	"operator.denylist": true, "operator.allowlist": true,
 }
 
 // IsListKey returns true if the key holds a list ([]string) value.
 func IsListKey(key string) bool {
-	if listKeyExact[key] {
+	switch key {
+	case "plugins.enabled", "plugins.disabled",
+		"tools.allow", "tools.allow_patterns", "tools.deny", "tools.deny_patterns",
+		"investigate.allowlist", "investigate.denylist":
 		return true
+	default:
+		if strings.HasPrefix(key, "roles.keywords.") {
+			return true
+		}
+		return false
 	}
-	return strings.HasPrefix(key, "auto_role.keywords.")
 }
 
 func setDefaults() {
-	viper.SetDefault("model", "mistral")
-	viper.SetDefault("host", "localhost")
-	viper.SetDefault("port", 11434)
-	viper.SetDefault("cache.enabled", true)
-	viper.SetDefault("cache.bypass", false)
+	viper.SetDefault("config.validation", "warn")
+	viper.SetDefault("plugins.enabled", []string{})
+	viper.SetDefault("plugins.disabled", []string{})
+	viper.SetDefault("cache.enabled", false)
 	viper.SetDefault("cache.refresh", false)
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		viper.SetDefault("cache.dir", filepath.Join(homeDir, ".config", "gaia", "cache"))
-	} else {
-		viper.SetDefault("cache.dir", ".gaia-cache")
-	}
-	viper.SetDefault("roles.default", "You are programming and system administration assistant. You are managing %s operating system with %s shell. Provide short responses in about 100 words, unless you are specifically asked for more details. If you need to store any data, assume it will be stored in the conversation. APPLY MARKDOWN formatting when possible.")
-	viper.SetDefault("roles.describe", "Provide a terse, single sentence description of the given shell command. Describe each argument and option of the command. Provide short responses in about 80 words. APPLY MARKDOWN formatting when possible.")
-	viper.SetDefault("roles.shell", "Provide only %s commands for %s without any description. If there is a lack of details, provide the most logical solution. Ensure the output is a valid shell command. If multiple steps are required, try to combine them using &&. Provide only plain text without Markdown formatting. Do not use markdown formatting such as ```.")
-	viper.SetDefault("roles.code", "Provide only code as output without any description. Provide only code in plain text format without Markdown formatting. Do not include symbols such as ``` or ```python. If there is a lack of details, provide most logical solution. You are not allowed to ask for more details. For example if the prompt is \"Hello world Python\", you should return \"print('Hello world')\".")
-	viper.SetDefault("roles.commit", "Generate a conventional commit message based on the provided git diff. The message must have multiple lines: first line is the title (type: subject format), followed by a blank line, then a detailed description on multiple lines. Title format: start with a type (feat, fix, docs, style, refactor, test, chore), followed by a colon and space, then a brief description in lowercase. The description should explain what and why, not how. Do not include markdown formatting, code blocks, or explanations. Only return the commit message itself.")
-	viper.SetDefault("roles.branch", "Generate a concise branch name based on the provided git diff or description. The branch name should be lowercase, use hyphens to separate words, and be descriptive but short (max 50 characters). Follow common patterns like: feature/description, fix/description, refactor/description. Do not include markdown formatting, code blocks, or explanations. Only return the branch name itself.")
-	// Default tool configurations
-	viper.SetDefault("tools.git.commit.context_command", "git diff --staged")
-	viper.SetDefault("tools.git.commit.role", "commit")
-	viper.SetDefault("tools.git.commit.execute_command", "git commit -F {file}")
-	viper.SetDefault("tools.git.branch.context_command", "git diff")
-	viper.SetDefault("tools.git.branch.role", "branch")
-	viper.SetDefault("tools.git.branch.execute_command", "git checkout -b {response}")
-	// YAML-driven roles (optional): when roles.directory is set and exists, roles are loaded from YAML
 	viper.SetDefault("roles.directory", "")
-	viper.SetDefault("roles.auto_select", true)
-	viper.SetDefault("roles.default_role", "default")
-	viper.SetDefault("roles.debug", false)
-	viper.SetDefault("roles.scoring.min_threshold", 0.3)
-	// Auto-role detection defaults (used when roles.directory is not set)
-	viper.SetDefault("auto_role.enabled", true)
-	viper.SetDefault("auto_role.mode", "hybrid") // off | heuristic | hybrid
-
-	// Default keywords for role detection
-	viper.SetDefault("auto_role.keywords.shell", []string{
-		"command", "run", "execute", "terminal", "bash", "zsh", "sh", "shell",
-		"cd", "ls", "grep", "find", "mkdir", "rm", "cp", "mv", "cat", "echo",
-		"sudo", "chmod", "chown", "ps", "kill", "pkill", "systemctl", "service",
-		"install", "uninstall", "package", "apt", "yum", "brew", "pip", "npm",
-	})
-	viper.SetDefault("auto_role.keywords.code", []string{
-		"function", "class", "def", "import", "return", "if", "else", "for", "while",
-		"variable", "array", "list", "dict", "string", "int", "bool", "type",
-		"python", "javascript", "java", "go", "rust", "c++", "c#", "php", "ruby",
-		"code", "programming", "algorithm", "api", "endpoint", "json", "xml",
-		"database", "sql", "query", "table", "schema", "migration",
-	})
-	viper.SetDefault("auto_role.keywords.describe", []string{
-		"what", "what does", "explain", "describe", "meaning", "definition",
-		"how does", "tell me about", "what is", "what are", "help me understand",
-	})
-	viper.SetDefault("auto_role.keywords.commit", []string{
-		"commit message", "generate commit", "create commit", "write commit", "make commit",
-		"conventional commit", "changelog", "commit msg", "git commit message",
-		"commit", // Keep as fallback but lower priority
-	})
-	viper.SetDefault("auto_role.keywords.branch", []string{
-		"create branch", "new branch", "make branch", "generate branch", "branch name",
-		"git branch", "checkout branch", "switch branch",
-		"branch", // Keep as fallback but lower priority
-	})
-
-	// Operator (investigate) defaults
-	viper.SetDefault("operator.max_steps", 10)
-	viper.SetDefault("operator.confirm_medium_risk", true)
-	viper.SetDefault("operator.dry_run", false)
-	viper.SetDefault("operator.allowlist", []string{})
-	viper.SetDefault("operator.denylist", []string{"rm -rf", "sudo", "mkfs", "> /dev/sd"})
-	viper.SetDefault("operator.output_max_bytes", 4096)
-	viper.SetDefault("operator.command_timeout_seconds", 30)
-	// When true (default), shell commands that exit with code 1 are treated as success (e.g. git diff with no changes).
-	// When false, exit code 1 is reported as an error.
-	viper.SetDefault("operator.treat_exit_code_1_as_success", true)
-
-	// Sanitize before LLM: reduce noise and token usage (none | light | aggressive)
-	viper.SetDefault("sanitize_before_llm", false)
+	viper.SetDefault("sanitize.enabled", false)
 	viper.SetDefault("sanitize.level", "light")
-	viper.SetDefault("sanitize.max_tokens_after", 0) // 0 = no cap
-	viper.SetDefault("sanitize.log_stats", true)
+	viper.SetDefault("sanitize.max_tokens_after", 0)
+	viper.SetDefault("sanitize.log_stats", false)
 }
 
 func InitConfig() error {
@@ -171,7 +122,15 @@ func InitConfig() error {
 			if err := os.MkdirAll(configDir, 0o755); err != nil {
 				return fmt.Errorf("failed to create config directory %s: %w", configDir, err)
 			}
-			CfgFile = filepath.Join(configDir, "config.yaml")
+			yamlPath := filepath.Join(configDir, "config.yaml")
+			ymlPath := filepath.Join(configDir, "config.yml")
+			if fileExists(yamlPath) {
+				CfgFile = yamlPath
+			} else if fileExists(ymlPath) {
+				CfgFile = ymlPath
+			} else {
+				CfgFile = yamlPath
+			}
 		}
 	}
 	viper.SetConfigFile(CfgFile)
@@ -200,20 +159,18 @@ func InitConfig() error {
 			return fmt.Errorf("read config: %w", err)
 		}
 	}
-
 	if err := loadTrustedLocalConfig(); err != nil {
 		return err
 	}
-
 	return nil
 }
 
-// SetConfigString sets a config key. For list keys (operator.denylist, operator.allowlist,
-// auto_role.keywords.*), value must be a JSON array of strings, e.g. `["a","b"]`.
+// SetConfigString sets a config key. For list keys (e.g. plugins.enabled, plugins.disabled),
+// value must be a JSON array of strings, e.g. `["a","b"]`.
 // For scalar keys, value is stored as-is.
 func SetConfigString(key, value string) error {
 	if !IsValidKey(key) {
-		return fmt.Errorf("invalid config key '%s'. Valid keys include: model, host, port, cache.enabled, cache.dir, cache.bypass, cache.refresh, debug, roles.*, auto_role.enabled, auto_role.mode, auto_role.keywords.*, operator.*, tools.*", key)
+		return fmt.Errorf("invalid config key %q", key)
 	}
 	if IsListKey(key) {
 		valueTrimmed := strings.TrimSpace(value)
@@ -224,12 +181,208 @@ func SetConfigString(key, value string) error {
 		if err := json.Unmarshal([]byte(valueTrimmed), &list); err != nil {
 			return fmt.Errorf("list key %q: invalid JSON array: %w", key, err)
 		}
-		viper.Set(key, list)
+		if isKernelKey(key) {
+			viper.Set(key, list)
+		} else {
+			pluginID := pluginIDFromKey(key)
+			if pluginID == "" {
+				return fmt.Errorf("invalid plugin key %q", key)
+			}
+			viper.Set(key, list)
+			return writePluginConfigValue(pluginID, strings.TrimPrefix(key, pluginID+"."), list)
+		}
 	} else {
+		if isKernelKey(key) {
+			viper.Set(key, value)
+			if err := viper.WriteConfig(); err != nil {
+				return fmt.Errorf("failed to write config file %s: %w", CfgFile, err)
+			}
+			return nil
+		}
+		pluginID := pluginIDFromKey(key)
+		if pluginID == "" {
+			return fmt.Errorf("invalid plugin key %q", key)
+		}
 		viper.Set(key, value)
+		return writePluginConfigValue(pluginID, strings.TrimPrefix(key, pluginID+"."), value)
 	}
 	if err := viper.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write config file %s: %w", CfgFile, err)
 	}
 	return nil
+}
+
+// ValidationMode returns the current config validation mode.
+// Allowed values: "strict", "warn", "off".
+func ValidationMode() string {
+	mode := strings.ToLower(strings.TrimSpace(viper.GetString("config.validation")))
+	switch mode {
+	case "strict", "warn", "off":
+		return mode
+	default:
+		return "warn"
+	}
+}
+
+// FlattenKeys returns all leaf keys from a nested settings map.
+func FlattenKeys(settings map[string]any) []string {
+	keys := []string{}
+	var walk func(prefix string, value any)
+	walk = func(prefix string, value any) {
+		switch v := value.(type) {
+		case map[string]any:
+			for k, child := range v {
+				next := k
+				if prefix != "" {
+					next = prefix + "." + k
+				}
+				walk(next, child)
+			}
+		default:
+			if prefix != "" {
+				keys = append(keys, prefix)
+			}
+		}
+	}
+	for k, v := range settings {
+		walk(k, v)
+	}
+	return keys
+}
+
+// KeysFromFile loads and flattens keys from a YAML config file.
+func KeysFromFile(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		return nil, nil
+	}
+	var settings map[string]any
+	if err := yaml.Unmarshal(data, &settings); err != nil {
+		return nil, err
+	}
+	return FlattenKeys(settings), nil
+}
+
+// PluginConfigKeys loads and flattens keys from a plugin config file, returning namespaced keys.
+func PluginConfigKeys(pluginID string) ([]string, error) {
+	path := pluginConfigPath(pluginID)
+	keys, err := KeysFromFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if strings.HasPrefix(key, pluginID+".") {
+			out = append(out, key)
+			continue
+		}
+		out = append(out, pluginID+"."+key)
+	}
+	return out, nil
+}
+
+// LoadPluginConfig merges a plugin config file into the current Viper instance.
+func LoadPluginConfig(pluginID string) error {
+	path := pluginConfigPath(pluginID)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		return nil
+	}
+	var settings map[string]any
+	if err := yaml.Unmarshal(data, &settings); err != nil {
+		return err
+	}
+	if len(settings) == 0 {
+		return nil
+	}
+	if _, ok := settings[pluginID]; ok {
+		return viper.MergeConfigMap(settings)
+	}
+	return viper.MergeConfigMap(map[string]any{pluginID: settings})
+}
+
+func pluginConfigPath(pluginID string) string {
+	base := ConfigDir()
+	return filepath.Join(base, "plugins", pluginID+".yaml")
+}
+
+func ConfigDir() string {
+	if CfgFile != "" {
+		return filepath.Dir(CfgFile)
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return filepath.Join(homeDir, ".config", "gaia")
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func isKernelKey(key string) bool {
+	return kernelKeys[key]
+}
+
+func pluginIDFromKey(key string) string {
+	parts := strings.SplitN(key, ".", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	return parts[0]
+}
+
+func writePluginConfigValue(pluginID, key string, value any) error {
+	dir := filepath.Join(ConfigDir(), "plugins")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := pluginConfigPath(pluginID)
+
+	settings := map[string]any{}
+	if data, err := os.ReadFile(path); err == nil {
+		_ = yaml.Unmarshal(data, &settings)
+	}
+
+	segments := strings.Split(key, ".")
+	setNestedValue(settings, segments, value)
+
+	out, err := yaml.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
+}
+
+func setNestedValue(target map[string]any, path []string, value any) {
+	if len(path) == 0 {
+		return
+	}
+	if len(path) == 1 {
+		target[path[0]] = value
+		return
+	}
+	next, ok := target[path[0]].(map[string]any)
+	if !ok {
+		next = map[string]any{}
+		target[path[0]] = next
+	}
+	setNestedValue(next, path[1:], value)
 }

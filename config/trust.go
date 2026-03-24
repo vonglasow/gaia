@@ -11,9 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"gaia/internal/filelock"
-	"gaia/internal/pathutil"
-	"gaia/internal/termio"
+	"gaia/plugins/shared"
 
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
@@ -42,7 +40,7 @@ func loadTrustedLocalConfig() error {
 	}
 
 	if !trusted {
-		if !termio.HasTTYStdin() || !termio.HasTTYStdout() {
+		if !shared.HasTTYStdin() || !shared.HasTTYStdout() {
 			fmt.Fprintf(os.Stderr, "Warning: ignored untrusted local config %s (run in a TTY to trust this repository)\n", localConfigPath)
 			return nil
 		}
@@ -94,7 +92,7 @@ func mergeLocalConfig(localConfigPath string) error {
 
 // IsRepositoryTrusted returns whether the repository root is trusted for local .gaia.yaml overrides.
 func IsRepositoryTrusted(repoRoot string) (bool, error) {
-	normalized, err := pathutil.Normalize(repoRoot)
+	normalized, err := shared.Normalize(repoRoot)
 	if err != nil {
 		return false, err
 	}
@@ -117,7 +115,7 @@ func IsRepositoryTrusted(repoRoot string) (bool, error) {
 
 // TrustRepository persists trust for the given repository root in the user trust store.
 func TrustRepository(repoRoot string) error {
-	normalized, err := pathutil.Normalize(repoRoot)
+	normalized, err := shared.Normalize(repoRoot)
 	if err != nil {
 		return err
 	}
@@ -134,7 +132,7 @@ func TrustRepository(repoRoot string) error {
 
 // UntrustRepository removes trust for the given repository root.
 func UntrustRepository(repoRoot string) error {
-	normalized, err := pathutil.Normalize(repoRoot)
+	normalized, err := shared.Normalize(repoRoot)
 	if err != nil {
 		return err
 	}
@@ -191,7 +189,7 @@ func ResolveRepositoryRootFromPath(path string) (string, error) {
 	if !info.IsDir() {
 		start = filepath.Dir(abs)
 	}
-	normalizedStart, err := pathutil.Normalize(start)
+	normalizedStart, err := shared.Normalize(start)
 	if err != nil {
 		return "", err
 	}
@@ -206,7 +204,7 @@ func discoverLocalConfig() (localConfigPath string, repoRoot string, found bool,
 	if err != nil {
 		return "", "", false, err
 	}
-	cwd, err = pathutil.Normalize(cwd)
+	cwd, err = shared.Normalize(cwd)
 	if err != nil {
 		return "", "", false, err
 	}
@@ -240,7 +238,7 @@ func findGitRoot(start string) (string, bool, error) {
 	for {
 		gitPath := filepath.Join(dir, ".git")
 		if _, err := os.Stat(gitPath); err == nil {
-			root, normErr := pathutil.Normalize(dir)
+			root, normErr := shared.Normalize(dir)
 			if normErr != nil {
 				return "", false, normErr
 			}
@@ -255,20 +253,20 @@ func findGitRoot(start string) (string, bool, error) {
 }
 
 func withTrustStoreReadLock(fn func(path string) error) error {
-	return withTrustStoreLock(filelock.Shared, fn)
+	return withTrustStoreLock(shared.Shared, fn)
 }
 
 func withTrustStoreWriteLock(fn func(path string) error) error {
-	return withTrustStoreLock(filelock.Exclusive, fn)
+	return withTrustStoreLock(shared.Exclusive, fn)
 }
 
-func withTrustStoreLock(mode filelock.Mode, fn func(path string) error) error {
+func withTrustStoreLock(mode shared.Mode, fn func(path string) error) error {
 	storePath, err := trustStorePath()
 	if err != nil {
 		return err
 	}
 	lockPath := storePath + ".lock"
-	if err := filelock.With(lockPath, mode, trustLockTimeout, func() error {
+	if err := shared.With(lockPath, mode, trustLockTimeout, func() error {
 		return fn(storePath)
 	}); err != nil {
 		return fmt.Errorf("lock trust store: %w", err)
@@ -294,7 +292,7 @@ func readTrustedReposFromPath(path string) (map[string]bool, error) {
 
 	repos := make(map[string]bool, len(payload.TrustedRepos))
 	for key, isTrusted := range payload.TrustedRepos {
-		normalized, normErr := pathutil.Normalize(key)
+		normalized, normErr := shared.Normalize(key)
 		if normErr != nil {
 			continue
 		}

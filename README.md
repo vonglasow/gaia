@@ -1,617 +1,146 @@
-# Gaia
+# Gaia (Minimal Kernel + Plugins)
 
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/vonglasow/gaia/main.svg)](https://results.pre-commit.ci/latest/github/vonglasow/gaia/main)
-![Go Version](https://img.shields.io/github/go-mod/go-version/vonglasow/gaia)
-![License](https://img.shields.io/github/license/vonglasow/gaia)
-![Homebrew Formula](https://img.shields.io/badge/Homebrew-Install%20via%20tap-lightgrey)
-![Powered by Ollama](https://img.shields.io/badge/Powered%20by-Ollama-3a86ff?logo=ollama&logoColor=white)
-![100% Local AI](https://img.shields.io/badge/100%25%20Local-AI-success)
-![Works Offline](https://img.shields.io/badge/Works-Offline-orange)
+Gaia is a Go CLI built around a minimal kernel. The kernel only bootstraps the app and manages plugins. Every feature is implemented as a plugin.
 
-Gaia is a command-line interface (CLI) tool that provides a convenient way to
-interact with language models through a local or remote API. It features a beautiful
-terminal UI, configuration management, automatic role detection, response caching,
-and support for different interaction modes.
-
-## Features
-
-- 🚀 Simple and intuitive command-line interface
-- 🎨 Beautiful terminal UI with progress bars
-- 📺 **Interactive TUI prompts** (Bubble Tea): when using tool actions (`gaia tool git commit`) or operator mode (`gaia investigate`), context and confirmation prompts use a rich terminal UI in a real terminal — styled boxes, keyboard shortcuts, text wrapping to window width
-- ⚙️ Comprehensive configuration management with YAML support
-- 🔄 Support for different interaction modes (default, describe, code, shell, commit, branch)
-- 🤖 Automatic role detection based on message content
-- 📦 Automatic model management (pull if not present)
-- 💾 Response caching for faster repeated queries
-- 🧹 Optional sanitization of prompts before LLM (reduce noise and tokens; configurable levels)
-- 🔌 Support for local (Ollama) and remote (OpenAI, Mistral) APIs
-- 🛠️ Tool integration for executing external commands
-- 📥 Stdin support for piping content
-- 🔍 **Investigate (operator mode)**: autonomous investigation with tool execution (e.g. "Why is my disk full?") — plan, run commands, reason, and summarize with safety controls (denylist, confirmation, dry-run)
-
-## Installation
-
-### Prerequisites
-
-- Go 1.26 or later
-- A running instance of a compatible language model API (e.g., Ollama) or an API key for OpenAI or Mistral
-
-### Building from Source
+## Quick Start
 
 ```bash
-git clone https://github.com/vonglasow/gaia.git
-cd gaia
-go build
-```
-
-### Using Homebrew (recommended 🍺)
-
-```sh
-brew tap vonglasow/tap
-brew install gaia
-```
-
-#### Update
-
-```sh
-brew upgrade gaia
+go build ./...
+./gaia --help
 ```
 
 ## Configuration
 
-Gaia stores its configuration in `~/.config/gaia/config.yaml`. The configuration file is automatically created on first run with sensible defaults.
+Default config location: `~/.config/gaia/config.yaml` (or `~/.config/gaia/config.yml`)
 
-### Project-Local Overrides (`.gaia.yaml`)
+Kernel-owned keys:
 
-When you run Gaia inside a project, Gaia looks for a local `.gaia.yaml` (from your current directory up to the git repository root).
+- `plugins.enabled`: list of plugin IDs to force-enable
+- `plugins.disabled`: list of plugin IDs to force-disable
+- `config.validation`: `strict`, `warn`, or `off` (default: `warn`)
 
-- Local config is useful for project-specific `roles.*` prompts and `tools.*` actions.
-- On first detection, Gaia asks whether you trust that repository.
-- If trusted, local settings override your user config for that repository.
-- Trust decisions are stored in `~/.config/gaia/trusted-repos.yaml` and reused on next runs.
-- In non-interactive mode (CI, piped execution), untrusted local config is ignored and Gaia uses user/global config only.
+Plugin keys must be namespaced as `<plugin>.*` and are validated against each plugin’s schema.
+Plugin-specific config files live at `~/.config/gaia/plugins/<plugin>.yaml`.
 
-Configuration precedence is:
-
-`CLI flags > env vars > local .gaia.yaml > ~/.config/gaia/config.yaml > built-in defaults`
-
-### Basic Configuration
-
-- `model`: The language model to use (default: "mistral" for Ollama, "gpt-4o-mini" for OpenAI, "mistral-medium-latest" for Mistral)
-- `host`: API host (default: "localhost" for Ollama, "api.openai.com" for OpenAI, "api.mistral.ai" for Mistral)
-- `port`: API port (default: 11434 for Ollama, 443 for OpenAI and Mistral)
-
-### Cache Configuration
-
-- `cache.enabled`: Enable/disable response caching (default: `true`)
-- `cache.dir`: Cache directory path (default: `~/.config/gaia/cache`)
-
-### Sanitize before LLM
-
-Optional preprocessing to reduce noise and token usage before sending messages to the model:
-
-- `sanitize_before_llm`: Enable/disable sanitization (default: `false`)
-- `sanitize.level`: Filter intensity — `none`, `light`, or `aggressive` (default: `light`)
-  - **light**: Removes debug/metadata lines, timestamps, obvious duplicates, collapses extra newlines
-  - **aggressive**: In addition, removes long unstructured runs and redundant sections
-- `sanitize.max_tokens_after`: Cap total tokens after sanitization (default: `0` = no cap)
-- `sanitize.log_stats`: Log token counts and filtering stats to stderr when sanitization runs (default: `true`)
-
-The last user message is always preserved. When enabled, a one-line summary is printed to stderr, e.g. `[sanitize] tokens before=1200 after=800 removed≈400 ms=2`.
-
-### Auto-Role Detection
-
-- `auto_role.enabled`: Enable automatic role detection (default: `true`)
-- `auto_role.mode`: Detection mode - `off`, `heuristic`, or `hybrid` (default: `hybrid`)
-  - `off`: Disable auto-detection, always use default role
-  - `heuristic`: Use fast local keyword matching only
-  - `hybrid`: Use heuristic first, fallback to LLM for ambiguous cases
-- `auto_role.keywords.<role_name>`: Custom keywords for role detection (see below)
-
-### Roles
-
-Roles define different interaction modes with their respective prompts. The available roles depend on what is configured in your configuration file. By default, the following roles are pre-configured:
-
-**Default Roles (Pre-configured):**
-- `roles.default`: General programming and system administration assistance
-- `roles.describe`: Command description and documentation
-- `roles.shell`: Shell command generation
-- `roles.code`: Code generation without descriptions
-- `roles.commit`: Generate conventional commit messages
-- `roles.branch`: Generate branch names
-
-**Custom Roles:**
-You can add custom roles by adding `roles.<role_name>` keys to your configuration file. Any role defined in the configuration will be available for use.
-
-**YAML role directory and inheritance:** When `roles.directory` is set to a
-directory path, Gaia loads roles from YAML files in that directory (one role per
-file). Roles can inherit from others with `extends: ["base", "other-role"]`.
-Parent prompts are concatenated first (separator `---`), then the child’s;
-signals, threshold, priority, weight, mode and exclusive are merged (child
-overrides when defined). Circular or missing parents cause a clear error.
-Resolution runs once at load time. Optional: `roles.debug` (or CLI
-`--roles-debug`) prints resolution and scoring to stderr with prefix `[ROLES
-DEBUG]`.
-
-**Note:** The list of available roles is dynamic and depends on your configuration. Use `gaia config list` to see all configured roles in your setup.
-
-### Role Keywords (Auto-Detection)
-
-Keywords are used by the heuristic detection to identify the appropriate role. Default keywords are pre-configured for the default roles:
-
-**Pre-configured Keywords:**
-- `auto_role.keywords.shell`: Command-related keywords
-- `auto_role.keywords.code`: Programming-related keywords
-- `auto_role.keywords.describe`: Question/explanation keywords
-- `auto_role.keywords.commit`: Commit message keywords
-- `auto_role.keywords.branch`: Branch creation keywords
-
-**Custom Keywords:**
-You can customize these keywords or add keywords for custom roles by adding `auto_role.keywords.<role_name>` keys to your configuration file. This allows auto-detection to work with your custom roles as well.
-
-### Tool Configuration
-
-Tools allow you to execute external commands with AI-generated content. Example configuration:
+Example:
 
 ```yaml
-tools:
-  git:
-    commit:
-      context_command: "git diff --staged"
-      role: "commit"
-      execute_command: "git commit -F {file}"
-    branch:
-      context_command: "git diff"
-      role: "branch"
-      execute_command: "git checkout -b {response}"
+plugins:
+  enabled: ["ask"]
+  disabled: []
+
+llm:
+  provider: "ollama"
+  host: "localhost"
+  port: 11434
+  model: "llama3.1"
+  timeout_seconds: 60
 ```
 
-Tool configuration fields:
-- `context_command`: Command to run to gather context (optional)
-- `role`: Role to use for AI generation
-- `execute_command`: Command to execute with AI response (use `{file}` for multi-line, `{response}` for single-line)
+## Plugins
 
-### Operator (Investigate) Configuration
+Plugins are compiled into the single binary, then enabled/disabled via config.
 
-The operator mode (`gaia investigate`) uses the following options (all under `operator.`):
+Plugin interface:
 
-- `operator.max_steps`: Maximum number of steps per run (default: `10`)
-- `operator.confirm_medium_risk`: Ask for confirmation before running medium-risk commands (default: `true`)
-- `operator.dry_run`: If `true`, never execute commands; only show what would be run (default: `false`)
-- `operator.denylist`: List of forbidden command patterns (e.g. `["rm -rf", "sudo", "mkfs"]`). Commands containing these are blocked.
-- `operator.allowlist`: Optional. If set, only commands that start with or contain one of these patterns are allowed (prefix or substring, case-insensitive; not regex). Example: `["df", "du", "find"]`.
-- `operator.output_max_bytes`: Maximum length of command output per step (default: `4096`); longer output is truncated.
-- `operator.command_timeout_seconds`: Timeout in seconds for each shell command (default: `30`).
-- `operator.treat_exit_code_1_as_success`: When `true` (default), commands that exit with code 1 are treated as success and their output is returned (e.g. `git diff` with no changes). When `false`, exit code 1 is reported as an error. Useful if you want strict failure detection for all commands.
+- `ID() string`
+- `DefaultEnabled() bool`
+- `DependsOn() []string`
+- `ConfigSchema() []string`
+- `Register(k *kernel.Kernel) ([]*cobra.Command, error)`
 
-Example in `config.yaml`:
+Schema keys must be prefixed with the plugin ID (e.g., `ask.default_prompt`). To allow any nested keys, use a wildcard suffix like `ask.settings.*`.
 
-```yaml
-operator:
-  max_steps: 10
-  confirm_medium_risk: true
-  denylist:
-    - "rm -rf"
-    - "sudo"
-    - "mkfs"
-  allowlist: []   # leave empty to allow any command not on denylist
-  command_timeout_seconds: 30
-  treat_exit_code_1_as_success: true   # default: git diff with no changes (exit 1) is not an error
-```
+### Built-in Example Plugins
 
-### Use an Alternative Configuration File
+- `ask`: ask a model via a provider (Ollama, OpenAI, Mistral)
+- `chat`: chat with a model (in-memory history)
+- `cache`: cache inspection and management
+- `tool`: run external tools with approval
+- `investigate`: operator-style investigation with tool execution
+- `roles`: role loader and auto-role resolver
+
+## Commands
 
 ```bash
-gaia --config /path/to/custom/config.yaml ask "Hello!"
-# or
-GAIA_CONFIG=/path/to/custom/config.yaml gaia ask "Hello!"
-```
-
-## Usage
-
-### Basic Commands
-
-```bash
-# Ask a question
-gaia ask "What is the meaning of life?"
-
-# Ask with piped input
-echo "Hello world" | gaia ask "Translate to French"
-git diff | gaia ask "Generate commit message"
-
-# Start an interactive chat session
-gaia chat
-
-# Check version
-gaia version
-
-# Investigate a goal (operator mode: runs tools, reasons, summarizes)
-gaia investigate "Why is my disk full?"
-gaia investigate --dry-run "What's using the most space?"
-gaia investigate --yes "List large files in /tmp"   # skip confirmation for medium-risk commands
-gaia investigate --debug "Why is CPU high?"         # show decisions and observations
-```
-
-### Configuration Management
-
-```bash
-# View all configuration settings
+gaia plugins list
+gaia plugins enable ask
 gaia config list
-
-# Get specific configuration value
-gaia config get model
-gaia config get auto_role.enabled
-
-# Set configuration value
-gaia config set model llama2
-gaia config set host 127.0.0.1
-gaia config set port 8080
-gaia config set auto_role.mode heuristic
-
-# Show configuration file path
-gaia config path
-
-# Create default configuration file
-gaia config create
-
-# Trust local project overrides for current repository
-gaia config trust
-
-# Remove trust for current repository
-gaia config untrust
-
-# Show trust status for current repository
-gaia config trust --status
-
-# List all trusted repositories
-gaia config trusted
-
-# Show trust status for a specific path/repository
-gaia config trusted /path/to/repo
-```
-
-### Using Different Roles
-
-The available roles depend on your configuration. By default, the following roles are available:
-
-```bash
-# Use default role (general assistance)
-gaia ask "How do I create a new directory?"
-
-# Explicitly specify a pre-configured role
-gaia ask --role describe "ls -la"
-gaia ask --role shell "list files in current directory"
-gaia ask --role code "Hello world in Python"
-gaia ask --role commit "generate commit message"
-gaia ask --role branch "create branch name"
-
-# Use a custom role (if configured)
-gaia ask --role my_custom_role "custom prompt"
-
-# Auto-detection (enabled by default)
-gaia ask "generate git commit message"  # Automatically detects "commit" role
-gaia ask "create a new branch"          # Automatically detects "branch" role
-```
-
-**Note:** To see all available roles in your configuration, use `gaia config list` and look for keys starting with `roles.`.
-
-### Auto-Role Detection
-
-When `auto_role.enabled` is `true` (default), Gaia automatically detects the appropriate role based on your message content:
-
-```bash
-# These will automatically use the appropriate role
-gaia ask "what does ls -la do?"           # → describe role
-gaia ask "list files in directory"        # → shell role
-gaia ask "write a Python function"        # → code role
-git diff | gaia ask "generate commit"     # → commit role
-```
-
-Use `--debug` flag to see which role was detected and how:
-
-```bash
-gaia ask --debug "generate commit message"
-# [DEBUG] Auto-detected role: commit (method: heuristic, score: 0.85, reason: matched keywords)
-```
-
-### Cache Management
-
-```bash
-# View cache statistics
-gaia cache stats
-
-# List all cache entries
-gaia cache list
-
-# Dump all cached responses
-gaia cache dump
-
-# Clear the cache
-gaia cache clear
-
-# Bypass cache for a single command
-gaia --no-cache ask "What is AI?"
-
-# Refresh/overwrite cache entry
-gaia --refresh-cache ask "What is AI?"
-```
-
-### Global Flags
-
-- `--config, -c`: Path to alternative configuration file
-- `--no-cache`: Bypass local response cache for this command
-- `--refresh-cache`: Regenerate and overwrite cache entries
-- `--debug`: Enable debug output (shows role detection info)
-
-### Chat Mode
-
-The chat mode provides an interactive session where you can have a continuous conversation with the model. The conversation history is maintained throughout the session, allowing the model to reference previous messages.
-
-```bash
-# Start a chat session
+gaia config get ask.default_prompt
+gaia config set ask.default_prompt "Hello"
+gaia ask "Ping"
 gaia chat
-
-# Type your messages and press Enter
-# Type 'exit' to end the chat session
-```
-
-### Investigate (Operator Mode)
-
-The **investigate** command runs an autonomous operator: it plans steps, runs shell commands (e.g. `df`, `du`, `find`), reasons over the results, and returns a summary or suggested actions. Safety is enforced via a denylist, optional allowlist, and confirmation for medium-risk commands.
-
-```bash
-# Investigate a goal (operator will run commands like df -h, du, etc.)
-gaia investigate "Why is my disk full?"
-
-# See what would be run without executing (dry-run)
-gaia investigate --dry-run "What's using the most space?"
-
-# Skip confirmation for medium-risk commands (e.g. touch, mkdir)
-gaia investigate --yes "List large files in /tmp"
-
-# Show plan, decisions, and tool results (debug)
-gaia investigate --debug "Why is CPU high?"
-
-# Limit the number of steps
-gaia investigate --max-steps 5 "Quick disk check"
-```
-
-**Flags:**
-
-- `--max-steps`, `-n`: Maximum number of operator steps (default: 10)
-- `--dry-run`: Do not execute commands; only show what would be run
-- `--yes`, `-y`: Skip confirmation for medium-risk commands
-- `--debug`: Print each decision (action, tool, args) and observation
-
-**Confirmation prompt (TUI):** When the operator needs your approval for a medium-risk command, Gaia shows an interactive confirmation screen in a real terminal: the proposed command in a styled box, then **y** or **Enter** to allow or **n** to decline. Content wraps to the terminal width. When not in a TTY, a simple line-based prompt is used.
-
-**Safety:** Commands containing `operator.denylist` entries (e.g. `sudo`, `rm -rf`) are always blocked. If `operator.allowlist` is set, only commands that start with or contain an allowlist entry (prefix/substring, case-insensitive) are allowed. Use `--dry-run` to preview behaviour without executing anything.
-
-### Tool Commands
-
-Execute configured tool actions that combine AI generation with external command execution:
-
-```bash
-# Execute a tool action
+gaia cache list
+gaia tool run git status
+gaia version
+gaia investigate "why is disk full?"
+gaia roles list
+gaia ask --role code "Explain this function"
+gaia chat --role default
+gaia investigate --role operator "analyze CI failures"
 gaia tool git commit
-gaia tool git branch "add user authentication"
-
-# The tool will:
-# 1. Run the context_command (if configured) to gather context
-# 2. Allow you to modify the context
-# 3. Generate content using the specified role
-# 4. Ask for confirmation
-# 5. Execute the execute_command with the generated content
+gaia ask --pull "Pull model if needed"
+gaia chat --pull
+gaia investigate --pull "force refresh the model"
+gaia config create
+gaia config path
+gaia config trust .
 ```
 
-**Interactive prompts (TUI):** When you run a tool in a real terminal (TTY), Gaia shows an interactive prompt:
+Global flags:
+- `--debug` enables debug output across features (including roles debug).
 
-- **Context step:** Current context (e.g. `git diff`) is shown in a styled box. You can press **Enter** to use it as-is, type new text to replace it, **+text** to append, or **q** to quit. All content wraps to the terminal width.
-- **Confirmation step:** After the AI generates the message (e.g. commit text), a confirmation screen appears: **y** or **Enter** to confirm and run the command, **n** to cancel.
+### Ask and chat output (interactive terminal)
 
-When stdout is not a terminal (e.g. piping, CI), the same flow uses simple line-based prompts so scripts keep working.
+When stdout is a TTY, `ask` and `chat` show the model reply in an **alternate-screen Bubble Tea panel** (same rounded style as cached answers) while tokens stream in. After the stream finishes, the full answer is printed again with the usual framed **Answer** / **Assistant** box so it stays in your scrollback. When stdout is not a terminal (pipes, redirection), output falls back to plain streaming text.
 
-### Example Usage
+### Ask Config
 
-#### Basic Question
+Ask uses shared `llm.*` config, with optional `ask.*` overrides.
 
-```bash
-$ gaia ask "What is the meaning of life?"
-The meaning of life is a philosophical question that has been debated for centuries...
-```
+Required shared config:
 
-#### Code Analysis with Piped Input
+- `host`
+- `port`
+- `model`
+- `timeout_seconds` (optional, default: 120)
 
-```bash
-$ cat CVE-2021-4034.py | gaia ask "Analyze and explain this code"
-This code is a Python script that exploits the CVE-2021-4034 vulnerability in Python...
-```
+### Cache Config
 
-#### Git Commit Message Generation
+- `cache.enabled` (default: false)
+- `cache.dir` (optional)
+- `cache.ttl_seconds` (optional)
+- `cache.refresh` (default: false, refreshes cache when set with ask/chat flags)
 
-```bash
-$ git diff --staged | gaia ask "generate commit message"
-feat: add user authentication system
+### Sanitize Config
 
-Implement JWT-based authentication with login and registration endpoints.
-Add password hashing using bcrypt and session management.
-```
+- `sanitize.enabled` (default: false)
+- `sanitize.level` (`none`, `light`, `aggressive`)
+- `sanitize.max_tokens_after` (0 = no cap)
+- `sanitize.log_stats` (default: false)
 
-#### Branch Name Generation
+### Tools Config
 
-```bash
-$ git diff | gaia ask "create branch name"
-feature/user-authentication
-```
+- `tools.allow` (list of exact allowed commands)
+- `tools.allow_patterns` (list of allowed patterns, e.g. `git *`)
+- `tools.deny` (list of exact denied commands)
+- `tools.deny_patterns` (list of denied patterns)
 
-#### Using Tools
+Optional ask overrides:
 
-```bash
-$ gaia tool git commit
-# Shows git diff, allows modification, generates commit message, asks confirmation, executes git commit
-```
+- `ask.host`
+- `ask.port`
+- `ask.model`
+- `ask.timeout_seconds`
 
-#### Investigate (Operator)
+### Ollama Model Pull
 
-```bash
-$ gaia investigate "Why is my disk full?"
-# Operator runs e.g. df -h, du, reasons over output, then returns a summary and suggested next steps.
+When using the Ollama provider, Gaia checks if the model exists via the Ollama API.
+If the model is missing, it automatically pulls it. Use `--pull` to force a refresh
+even when the model already exists. Pull progress is shown as a progress bar on stderr.
 
-$ gaia investigate --dry-run "What's using space in /var?"
-# Same flow but no commands are executed; you see what would be run.
-```
-
-## API Providers
-
-### Ollama (Local - Default)
-
-Ollama is the default provider for local AI models. Configure it by setting:
-
-```yaml
-host: localhost
-port: 11434
-model: mistral  # or any model available in Ollama
-```
-
-Features:
-- Works completely offline
-- Automatic model pulling if not present
-- Progress bars during model download
-- No API key required
-
-### OpenAI (Remote)
-
-To use OpenAI, configure:
-
-```yaml
-host: api.openai.com
-port: 443
-model: gpt-4o-mini  # or gpt-4, gpt-3.5-turbo, etc.
-```
-
-And set the API key:
-
-```bash
-export OPENAI_API_KEY=your-api-key-here
-```
-
-Features:
-- Access to OpenAI's latest models
-- Streaming responses
-- No local model storage required
-
-## Advanced Configuration Examples
-
-### Custom Role
-
-Add a custom role to your configuration:
-
-```yaml
-roles:
-  custom:
-    "You are a specialized assistant for [your domain]. Provide concise, technical answers."
-```
-
-Once added, the role will be available for use:
-- Explicitly: `gaia ask --role custom "your question"`
-- Via auto-detection (if keywords are configured): `gaia ask "your question"` (will auto-detect if keywords match)
-
-### Custom Keywords for Auto-Detection
-
-```yaml
-auto_role:
-  enabled: true
-  mode: hybrid
-  keywords:
-    custom_role:
-      - "keyword1"
-      - "keyword2"
-      - "phrase with multiple words"
-```
-
-### Disable Auto-Role Detection
-
-```yaml
-auto_role:
-  enabled: false
-```
-
-### Use Heuristic-Only Detection
-
-```yaml
-auto_role:
-  enabled: true
-  mode: heuristic  # Fast, local-only detection
-```
-
-## Development
-
-### Project Structure
-
-- `api/`: API interaction, streaming, caching, and auto-role detection
-- `api/operator/`: Operator (investigate) loop: planner, tools, executor, safety
-- `commands/`: CLI command definitions
-- `config/`: Configuration management
-- `main.go`: Application entry point
-
-### Dependencies
-
-- [cobra](https://github.com/spf13/cobra): CLI framework
-- [viper](https://github.com/spf13/viper): Configuration management
-- [bubbletea](https://github.com/charmbracelet/bubbletea): Terminal UI framework (progress bars, interactive prompts)
-- [bubbles](https://github.com/charmbracelet/bubbles): TUI components (e.g. text input for context/edit prompts)
-- [lipgloss](https://github.com/charmbracelet/lipgloss): Styling and layout (boxes, colors, width-aware wrapping)
-
-### Running Tests
+## Tests
 
 ```bash
 go test -v ./...
 ```
-
-### Code Quality
-
-The project uses:
-- `go fmt` for formatting
-- `golangci-lint` for linting (version pinned in `.golangci-lint-version`; CI and pre-commit should use the same version)
-- `govulncheck` for vulnerability scanning of Go dependencies (run in CI and via pre-commit when Go files change)
-- `semgrep` for static analysis (run via pre-commit; uses `--config auto` from the Semgrep Registry)
-- `pre-commit` hooks for automated checks
-
-**Align with CI (recommended):** install the same golangci-lint version as CI so local lint matches:
-
-```bash
-# Version is in .golangci-lint-version
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(cat .golangci-lint-version)
-```
-
-**Optional (for the govulncheck pre-commit hook):** install govulncheck so the local hook can run:
-
-```bash
-go install golang.org/x/vuln/cmd/govulncheck@latest
-```
-
-Run all checks:
-
-```bash
-pre-commit run -a
-```
-
-**Dependency maintenance (run periodically):** check for known vulnerabilities and available updates:
-
-```bash
-govulncheck ./...
-go list -m -u all
-```
-
-## License
-
-This project is licensed under the terms specified in the LICENSE file.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-Please ensure:
-
-- Code is formatted and linted
-- Tests are added or updated
-- Pre-commit hooks pass
