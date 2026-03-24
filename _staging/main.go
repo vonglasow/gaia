@@ -15,7 +15,7 @@ func main() {
 		os.Exit(1)
 	}
 	if err := k.Execute(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Println(err)
 		os.Exit(1)
 	}
 }
