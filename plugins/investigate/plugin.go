@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
@@ -134,6 +135,8 @@ func (p *InvestigatePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error)
 			runner := &shellRunnerWithTimeout{
 				timeout:                 time.Duration(commandTimeout) * time.Second,
 				treatExitCode1AsSuccess: treatExit1,
+				in:                      cmd.InOrStdin(),
+				out:                     cmd.OutOrStdout(),
 			}
 
 			sendReq := func(r Request) (string, error) {
@@ -207,6 +210,8 @@ var defaultInvestigateDenylist = []string{"rm -rf", "sudo", "mkfs", "> /dev/sd"}
 type shellRunnerWithTimeout struct {
 	timeout                 time.Duration
 	treatExitCode1AsSuccess bool
+	in                      io.Reader
+	out                     io.Writer
 }
 
 func (s *shellRunnerWithTimeout) Run(ctx context.Context, cmd string) (stdout, stderr string, err error) {
@@ -214,6 +219,19 @@ func (s *shellRunnerWithTimeout) Run(ctx context.Context, cmd string) (stdout, s
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, s.timeout)
 		defer cancel()
+	}
+	if s.in != nil && s.out != nil && shared.HasTTYStdin() && shared.HasTTYStdout() {
+		decision, err := shared.RunCommandPreviewTUI(cmd, "Command", s.in, s.out)
+		if err != nil {
+			return "", "", err
+		}
+		switch decision {
+		case "run":
+		case "skip":
+			return "", "", ErrCommandSkipped
+		default:
+			return "", "", ErrCommandCancelled
+		}
 	}
 	return executeExternalCommand(ctx, cmd, s.treatExitCode1AsSuccess)
 }

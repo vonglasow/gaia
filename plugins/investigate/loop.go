@@ -9,6 +9,8 @@ import (
 
 // ErrMaxStepsReached is returned when the operator exits after max_steps without an answer.
 var ErrMaxStepsReached = errors.New("max steps reached")
+var ErrCommandSkipped = errors.New("command skipped")
+var ErrCommandCancelled = errors.New("command cancelled")
 
 // RunOptions holds options for the operator run (max steps, dry-run, yes, debug, guard, model).
 type RunOptions struct {
@@ -35,7 +37,7 @@ func Run(ctx context.Context, goal string, opts RunOptions) (finalAnswer string,
 		return "", fmt.Errorf("goal cannot be empty")
 	}
 	if opts.MaxSteps <= 0 {
-		opts.MaxSteps = 10
+		opts.MaxSteps = 100
 	}
 	if opts.MaxParseFailures <= 0 {
 		opts.MaxParseFailures = 2
@@ -63,8 +65,11 @@ func Run(ctx context.Context, goal string, opts RunOptions) (finalAnswer string,
 	for step := 0; step < opts.MaxSteps; step++ {
 		decision, raw, parseErr := planner.Decide(ctx, state, registry)
 		if parseErr != nil {
+			if errors.Is(parseErr, ErrEmptyResponse) {
+				return "", parseErr
+			}
 			parseFailures++
-			state.AppendObservation("error: Invalid response: " + parseErr.Error() + ". Respond with valid JSON only.")
+			state.AppendObservation("error: Invalid response. Respond with valid JSON only.")
 			debugf("parse error: %v\n", parseErr)
 			if parseFailures >= opts.MaxParseFailures {
 				return state.LastAnswerOrPartial(), fmt.Errorf("repeated parse failures: %w", parseErr)
@@ -115,6 +120,18 @@ func Run(ctx context.Context, goal string, opts RunOptions) (finalAnswer string,
 		}
 
 		stdout, stderr, execErr := executor.Run(ctx, tool, decision.Args)
+		if errors.Is(execErr, ErrCommandCancelled) {
+			return "", execErr
+		}
+		if errors.Is(execErr, ErrCommandSkipped) {
+			obs := "skipped: " + decision.Name
+			if cmd, ok := decision.Args["cmd"]; ok && strings.TrimSpace(cmd) != "" {
+				obs += " " + cmd
+			}
+			state.AppendObservation(obs)
+			debugf("observation: %s\n", obs)
+			continue
+		}
 		obs := FormatObservation(stdout, stderr, execErr)
 		state.AppendObservation(obs)
 		if opts.Debug {
