@@ -156,6 +156,23 @@ func promptDecision(cmd *cobra.Command, key, command, subcommand string) (string
 }
 
 func runCommand(ctx context.Context, command string, args []string, cmd *cobra.Command) error {
+	full := command
+	if len(args) > 0 {
+		full = full + " " + strings.Join(args, " ")
+	}
+	if shared.HasTTYStdin() && shared.HasTTYStdout() {
+		decision, err := shared.RunCommandPreviewTUI(full, "Command", cmd.InOrStdin(), cmd.OutOrStdout())
+		if err != nil {
+			return err
+		}
+		switch decision {
+		case "run":
+		case "skip":
+			return nil
+		default:
+			return fmt.Errorf("command cancelled")
+		}
+	}
 	// nosemgrep
 	c := exec.CommandContext(ctx, command, args...)
 	c.Stdout = cmd.OutOrStdout()

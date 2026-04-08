@@ -3,6 +3,7 @@ package investigate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -88,6 +89,9 @@ func (p *Planner) Decide(ctx context.Context, state *State, registry *Registry) 
 	if err != nil {
 		return nil, "", err
 	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, "", ErrEmptyResponse
+	}
 	raw = extractJSON(raw)
 	var dec Decision
 	if err := json.Unmarshal([]byte(raw), &dec); err != nil {
@@ -103,6 +107,7 @@ func (p *Planner) Decide(ctx context.Context, state *State, registry *Registry) 
 }
 
 var jsonBlockRe = regexp.MustCompile("(?s)```(?:json)?\\s*([^`]+)```")
+var ErrEmptyResponse = errors.New("empty response from model")
 
 // extractJSON returns the first JSON object from s, optionally inside ```json ... ```.
 func extractJSON(s string) string {
@@ -155,6 +160,7 @@ func (p *Planner) systemPrompt(registry *Registry) string {
 	}
 	return "You are an operator investigating a goal. Respond only with a single JSON object, no markdown or explanation. " +
 		"Either {\"action\":\"answer\",\"content\":\"...\"} to finish with a summary, or {\"action\":\"tool\",\"name\":\"...\",\"args\":{...},\"reasoning\":\"...\"} to run one tool. " +
-		"Do not run destructive commands (e.g. rm -rf, sudo). " +
+		"Do not run destructive commands (e.g. rm -rf, sudo). Never use run_cmd to call HTTP endpoints (curl, wget, http). " +
+		"If external data is needed, answer with limitations instead of running network commands. " +
 		toolsDesc
 }

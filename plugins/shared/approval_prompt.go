@@ -298,3 +298,87 @@ func RunConfirmationPromptTUI(message, title string, in io.Reader, out io.Writer
 	}
 	return m.confirmed, nil
 }
+
+type commandPreviewModel struct {
+	command  string
+	title    string
+	done     bool
+	canceled bool
+	skipped  bool
+	width    int
+}
+
+func newCommandPreviewModel(command, title string) commandPreviewModel {
+	if title == "" {
+		title = "Command"
+	}
+	return commandPreviewModel{command: command, title: title, width: approvalDefaultWidth}
+}
+
+func (m commandPreviewModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m commandPreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.done {
+		return m, nil
+	}
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		if msg.Width > 0 {
+			m.width = msg.Width
+		}
+		return m, nil
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.canceled = true
+			m.done = true
+			return m, tea.Quit
+		case "s":
+			m.skipped = true
+			m.done = true
+			return m, tea.Quit
+		default:
+			if msg.String() == "enter" || msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
+				m.done = true
+				return m, tea.Quit
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m commandPreviewModel) View() string {
+	contentWidth := m.width - 4
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+	wrapStyle := lipgloss.NewStyle().Width(contentWidth)
+	title := approvalTitleStyle.Render(m.title)
+	body := approvalBoxStyle.Width(contentWidth).Render(wrapStyle.Render(m.command))
+	opts := approvalKeyStyle.Render("Enter") + " run  " + approvalKeyStyle.Render("s") + " skip  " + approvalKeyStyle.Render("q") + " quit"
+	optsLine := approvalOptionStyle.Render(opts)
+	return lipgloss.NewStyle().Width(m.width).Render(title + "\n" + body + "\n\n" + optsLine)
+}
+
+// RunCommandPreviewTUI shows the command about to run and waits for Enter.
+func RunCommandPreviewTUI(command, title string, in io.Reader, out io.Writer) (string, error) {
+	model := newCommandPreviewModel(command, title)
+	prog := tea.NewProgram(model, tea.WithAltScreen(), tea.WithInput(in), tea.WithOutput(out))
+	final, err := prog.Run()
+	if err != nil {
+		return "quit", err
+	}
+	m, ok := final.(commandPreviewModel)
+	if !ok {
+		return "quit", nil
+	}
+	if m.canceled {
+		return "quit", fmt.Errorf("cancelled by user")
+	}
+	if m.skipped {
+		return "skip", nil
+	}
+	return "run", nil
+}
