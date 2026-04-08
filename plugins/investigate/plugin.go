@@ -1,7 +1,6 @@
 package investigate
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -248,17 +247,7 @@ func promptConfirm(cmd *cobra.Command, message string) (bool, error) {
 	if !shared.HasTTYStdin() || !shared.HasTTYStdout() {
 		return false, shared.PrintError(cmd.ErrOrStderr(), "No TTY available for confirmation prompt")
 	}
-	if err := shared.PrintBox(cmd.OutOrStdout(), "Confirm", message+"\nProceed? [y/N]"); err != nil {
-		return false, err
-	}
-	reader := bufio.NewReader(cmd.InOrStdin())
-	_ = shared.PrintPrompt(cmd.OutOrStdout(), "> ")
-	answer, err := reader.ReadString('\n')
-	if err != nil {
-		return false, err
-	}
-	answer = strings.TrimSpace(strings.ToLower(answer))
-	return answer == "y" || answer == "yes", nil
+	return shared.RunConfirmationPromptTUI(message, "Confirm", cmd.InOrStdin(), cmd.OutOrStdout())
 }
 
 func validateInvestigateConfig(req ask.AskRequest) error {
