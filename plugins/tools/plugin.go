@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os/exec"
@@ -153,61 +152,7 @@ func promptDecision(cmd *cobra.Command, key, command, subcommand string) (string
 		patternDefault = command + " *"
 	}
 
-	body := fmt.Sprintf("Command: %s\nChoose:\n1) Allow exact\n2) Allow pattern\n3) Deny exact\n4) Deny pattern\n5) Edit command\n6) Cancel\n", key)
-	if err := shared.PrintBox(cmd.OutOrStdout(), "Approval", body); err != nil {
-		return "cancel", "", "", err
-	}
-	reader := bufio.NewReader(cmd.InOrStdin())
-	_ = shared.PrintPrompt(cmd.OutOrStdout(), "Choice [1-6]: ")
-	choice, err := reader.ReadString('\n')
-	if err != nil {
-		return "cancel", "", "", err
-	}
-	choice = strings.TrimSpace(choice)
-
-	switch choice {
-	case "1":
-		return "allow_exact", "", "", nil
-	case "2":
-		pattern, err := readPattern(reader, cmd, patternDefault)
-		return "allow_pattern", pattern, "", err
-	case "3":
-		return "deny_exact", "", "", nil
-	case "4":
-		pattern, err := readPattern(reader, cmd, patternDefault)
-		return "deny_pattern", pattern, "", err
-	case "5":
-		edited, err := readCommandKey(reader, cmd, key)
-		return "edit", "", edited, err
-	default:
-		return "cancel", "", "", nil
-	}
-}
-
-func readPattern(reader *bufio.Reader, cmd *cobra.Command, def string) (string, error) {
-	_ = shared.PrintPrompt(cmd.OutOrStdout(), fmt.Sprintf("Pattern [%s]: ", def))
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return def, nil
-	}
-	return line, nil
-}
-
-func readCommandKey(reader *bufio.Reader, cmd *cobra.Command, def string) (string, error) {
-	_ = shared.PrintPrompt(cmd.OutOrStdout(), fmt.Sprintf("Command key [%s]: ", def))
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return def, nil
-	}
-	return line, nil
+	return shared.RunApprovalPromptTUI(key, patternDefault, key, cmd.InOrStdin(), cmd.OutOrStdout())
 }
 
 func runCommand(ctx context.Context, command string, args []string, cmd *cobra.Command) error {
