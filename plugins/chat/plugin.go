@@ -10,6 +10,7 @@ import (
 	"gaia/kernel"
 	"gaia/plugins/ask"
 	"gaia/plugins/cache"
+	"gaia/plugins/mempalace"
 	"gaia/plugins/roles"
 	"gaia/plugins/shared"
 	sanitizepkg "gaia/plugins/shared/sanitize"
@@ -91,6 +92,8 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			_ = shared.PrintBox(cmd.OutOrStdout(), "Chat", "Starting chat session. Type 'exit' to end.")
 			reader := bufio.NewReader(cmd.InOrStdin())
 			history := []ask.ChatMessage{}
+			sessionID := time.Now().UTC().Format("20060102T150405.000000000Z")
+			assistantTurns := 0
 			noCache, _ := cmd.Flags().GetBool("no-cache")
 			refreshCache, _ := cmd.Flags().GetBool("refresh-cache")
 			if !cmd.Flags().Lookup("refresh-cache").Changed {
@@ -162,6 +165,12 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 					}
 					req.SystemPrompt = roles.ResolveSystemPrompt(role, req.Provider, req.Model)
 				}
+				if memCtx, err := mempalace.InjectIfEnabled(cmd.Context(), line); err != nil {
+					_ = shared.PrintError(cmd.ErrOrStderr(), err.Error())
+					continue
+				} else if memCtx != "" {
+					req.SystemPrompt = mempalace.AppendMemory(req.SystemPrompt, memCtx)
+				}
 
 				cacheKey := ""
 				if canWrite {
@@ -181,6 +190,10 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 						if canRead {
 							if entry, ok, err := cache.Get(cacheKey); err == nil && ok {
 								history = append(history, ask.ChatMessage{Role: "assistant", Content: entry.Response})
+								assistantTurns++
+								if err := mempalace.PersistChatTurn(cmd.Context(), sessionID, assistantTurns, line, entry.Response); err != nil {
+									return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("mempalace add drawer failed: %v", err))
+								}
 								_ = shared.PrintBox(cmd.OutOrStdout(), "Assistant", entry.Response)
 								continue
 							}
@@ -220,6 +233,13 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 					continue
 				}
 				history = append(history, ask.ChatMessage{Role: "assistant", Content: finalText})
+				assistantTurns++
+				if err := mempalace.PersistChatTurn(cmd.Context(), sessionID, assistantTurns, line, finalText); err != nil {
+					return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("mempalace add drawer failed: %v", err))
+				}
+				if err := mempalace.DiaryWriteIfEnabled(cmd.Context(), line, finalText); err != nil && viper.GetBool("debug") {
+					_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace diary write failed: %v\n", err))
+				}
 				if canWrite && cacheKey != "" {
 					_ = cache.Set(cache.Entry{
 						Key:       cacheKey,

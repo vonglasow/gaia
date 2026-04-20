@@ -59,6 +59,7 @@ Schema keys must be prefixed with the plugin ID (e.g., `ask.default_prompt`). To
 - `tool`: run external tools with approval
 - `investigate`: operator-style investigation with tool execution
 - `roles`: role loader and auto-role resolver
+- `mempalace`: optional MCP memory integration
 
 ## Commands
 
@@ -75,6 +76,9 @@ gaia tool run git status
 gaia version
 gaia investigate "why is disk full?"
 gaia roles list
+gaia mem status
+gaia mem search "auth decision"
+gaia mem inject "auth decision"
 gaia ask --role code "Explain this function"
 gaia chat --role default
 gaia investigate --role operator "analyze CI failures"
@@ -132,6 +136,26 @@ Optional ask overrides:
 - `ask.port`
 - `ask.model`
 - `ask.timeout_seconds`
+
+### MemPalace MCP
+
+MemPalace can be used as an optional memory backend via MCP.
+Gaia uses JSON-RPC over stdin/stdout and starts MemPalace with:
+
+- `~/.local/pipx/venvs/mempalace/bin/python -m mempalace.mcp_server`
+
+Config keys:
+
+- `mempalace.mcp.command` (default: `~/.local/pipx/venvs/mempalace/bin/python`)
+- `mempalace.mcp.args` (default: `["-m","mempalace.mcp_server"]`)
+- `mempalace.mcp.timeout_seconds` (default: 30)
+- `mempalace.debug` (default: false, enables MCP request logs)
+- `mempalace.inject.enabled` (default: false)
+- `mempalace.inject.max_results` (default: 5)
+- `mempalace.inject.min_score` (default: 0.0)
+
+`ask` responses are also persisted to MemPalace synchronously via
+`mempalace_add_drawer` in `wing=gaia` and `room=ask`.
 
 ### Ollama Model Pull
 

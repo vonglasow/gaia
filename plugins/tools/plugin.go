@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"gaia/config"
 	"gaia/kernel"
 	"gaia/plugins/ask"
+	"gaia/plugins/mempalace"
 	"gaia/plugins/shared"
 
 	"github.com/spf13/cobra"
@@ -178,7 +180,30 @@ func runCommand(ctx context.Context, command string, args []string, cmd *cobra.C
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
 	c.Stdin = cmd.InOrStdin()
-	return c.Run()
+	err := c.Run()
+	if err != nil {
+		exitCode := extractExitCode(err)
+		persistErr := mempalace.PersistToolExecution(ctx, full, fmt.Sprintf("error: %v", err), exitCode)
+		if persistErr != nil {
+			return fmt.Errorf("%w; mempalace add drawer failed: %v", err, persistErr)
+		}
+		return err
+	}
+	if err := mempalace.PersistToolExecution(ctx, full, "success", 0); err != nil {
+		return fmt.Errorf("mempalace add drawer failed: %v", err)
+	}
+	return nil
+}
+
+func extractExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }
 
 func matchExact(list []string, key string) bool {
