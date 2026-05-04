@@ -1,10 +1,8 @@
----
 merge_queue:
   max_parallel_checks: 1
 
 queue_rules:
   - name: dependabot-dev-queue
-    autoqueue: true
     merge_method: rebase
     update_method: rebase
     batch_size: 1
@@ -30,3 +28,5 @@ pull_request_rules:
     actions:
       queue:
         name: dependabot-dev-queue
+merge_protections_settings:
+  auto_merge_conditions: true
