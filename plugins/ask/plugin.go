@@ -94,7 +94,7 @@ func (p *AskPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			if pull, _ := cmd.Flags().GetBool("pull"); pull {
 				req.Pull = true
 			}
-			if err := applyRolePrompt(cmd, &req, msg); err != nil {
+			if err := resolveSystemPrompt(cmd, &req, msg); err != nil {
 				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
 			}
 			if err := validateAskConfig(req); err != nil {
@@ -148,7 +148,7 @@ func (p *AskPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 				}
 			}
 
-			sreq := applySanitize(cmd, req)
+			sreq := ApplySanitize(cmd.ErrOrStderr(), req)
 			finalText, err := shared.DisplayStreamedAnswer(cmd.Context(), cmd.OutOrStdout(), "Answer", func(send func(string)) (string, error) {
 				var streamed strings.Builder
 				cleared := false
@@ -627,10 +627,86 @@ func withTimeout(ctx context.Context, timeout time.Duration) (context.Context, c
 	return context.WithTimeout(ctx, timeout)
 }
 
+// ApplySanitize sanitizes the conversation messages in req based on sanitize config.
+// errOut receives debug log lines; pass cmd.ErrOrStderr() from callers.
+func ApplySanitize(errOut io.Writer, req AskRequest) AskRequest {
+	if !viper.GetBool("sanitize.enabled") {
+		return req
+	}
+	levelStr := strings.ToLower(strings.TrimSpace(viper.GetString("sanitize.level")))
+	var level sanitizepkg.Level
+	switch levelStr {
+	case "none":
+		level = sanitizepkg.LevelNone
+	case "aggressive":
+		level = sanitizepkg.LevelAggressive
+	default:
+		level = sanitizepkg.LevelLight
+	}
+	opts := sanitizepkg.Options{
+		Level:             level,
+		MaxTokensAfter:    viper.GetInt("sanitize.max_tokens_after"),
+		LogStats:          viper.GetBool("sanitize.log_stats"),
+		PreserveLastUser:  true,
+		MaxDurationMillis: 100,
+	}
+	raw := buildMessagesForSanitize(req)
+	out, stats, err := sanitizepkg.Sanitize(sanitizepkg.Request{Messages: raw}, opts)
+	if err != nil {
+		if viper.GetBool("debug") {
+			_ = shared.PrintRaw(errOut, fmt.Sprintf("[DEBUG] sanitize: %v\n", err))
+		}
+		return req
+	}
+	if opts.LogStats && (stats.TokensBefore > 0 || stats.TokensAfter > 0) {
+		_ = shared.PrintRaw(errOut,
+			fmt.Sprintf("[sanitize] tokens before=%d after=%d removed≈%d ms=%d\n",
+				stats.TokensBefore, stats.TokensAfter, stats.RemovedCount, stats.DurationMillis))
+	}
+	req.SystemPrompt = ""
+	req.Message = ""
+	req.Messages = make([]ChatMessage, 0, len(out.Messages))
+	for _, m := range out.Messages {
+		req.Messages = append(req.Messages, ChatMessage{Role: m.Role, Content: m.Content})
+	}
+	return req
+}
+
+func buildMessagesForSanitize(req AskRequest) []sanitizepkg.Message {
+	out := []sanitizepkg.Message{}
+	if strings.TrimSpace(req.SystemPrompt) != "" {
+		out = append(out, sanitizepkg.Message{Role: "system", Content: req.SystemPrompt})
+	}
+	for _, m := range req.Messages {
+		if strings.TrimSpace(m.Role) == "" || strings.TrimSpace(m.Content) == "" {
+			continue
+		}
+		out = append(out, sanitizepkg.Message{Role: m.Role, Content: m.Content})
+	}
+	if strings.TrimSpace(req.Message) != "" {
+		out = append(out, sanitizepkg.Message{Role: "user", Content: req.Message})
+	}
+	return out
+}
+
+// resolveSystemPrompt sets req.SystemPrompt from MemPalace context when enabled,
+// falling back to role-based selection when MemPalace is unavailable or returns nothing.
+func resolveSystemPrompt(cmd *cobra.Command, req *AskRequest, msg string) error {
+	ctxPrompt, err := mempalace.SearchContextIfEnabled(cmd.Context(), msg)
+	if err != nil {
+		return err
+	}
+	if ctxPrompt != "" {
+		req.SystemPrompt = ctxPrompt
+		return nil
+	}
+	return applyRolePrompt(cmd, req, msg)
+}
+
 func applyRolePrompt(cmd *cobra.Command, req *AskRequest, msg string) error {
 	roleName := strings.TrimSpace(viper.GetString("ask.role"))
 	if roleName == "" && viper.GetBool("roles.auto_select") {
-		kw := loadRoleKeywords()
+		kw := roles.LoadKeywordConfig()
 		weight := viper.GetFloat64("roles.scoring.weight")
 		if weight == 0 {
 			weight = 1.0
@@ -647,7 +723,7 @@ func applyRolePrompt(cmd *cobra.Command, req *AskRequest, msg string) error {
 	if roleName == "" {
 		return nil
 	}
-	rolesList, err := loadRolesFromConfig()
+	rolesList, err := roles.LoadRolesWithDefaults()
 	if err != nil {
 		return err
 	}
@@ -661,83 +737,4 @@ func applyRolePrompt(cmd *cobra.Command, req *AskRequest, msg string) error {
 	}
 	req.SystemPrompt = roles.ResolveSystemPrompt(role, req.Provider, req.Model)
 	return nil
-}
-
-func applySanitize(cmd *cobra.Command, req AskRequest) AskRequest {
-	if !viper.GetBool("sanitize.enabled") {
-		return req
-	}
-	levelStr := strings.ToLower(strings.TrimSpace(viper.GetString("sanitize.level")))
-	var level sanitizepkg.Level
-	switch levelStr {
-	case "none":
-		level = sanitizepkg.LevelNone
-	case "aggressive":
-		level = sanitizepkg.LevelAggressive
-	case "light", "":
-		level = sanitizepkg.LevelLight
-	default:
-		level = sanitizepkg.LevelLight
-	}
-	opts := sanitizepkg.Options{
-		Level:             level,
-		MaxTokensAfter:    viper.GetInt("sanitize.max_tokens_after"),
-		LogStats:          viper.GetBool("sanitize.log_stats"),
-		PreserveLastUser:  true,
-		MaxDurationMillis: 100,
-	}
-	raw := buildMessages(req)
-	sreq := sanitizepkg.Request{Messages: make([]sanitizepkg.Message, 0, len(raw))}
-	for _, m := range raw {
-		sreq.Messages = append(sreq.Messages, sanitizepkg.Message{Role: m["role"], Content: m["content"]})
-	}
-	out, stats, err := sanitizepkg.Sanitize(sreq, opts)
-	if err != nil {
-		if viper.GetBool("debug") {
-			_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] sanitize: %v\n", err))
-		}
-		return req
-	}
-	if opts.LogStats && (stats.TokensBefore > 0 || stats.TokensAfter > 0) {
-		_ = shared.PrintRaw(cmd.ErrOrStderr(),
-			fmt.Sprintf("[sanitize] tokens before=%d after=%d removed≈%d ms=%d\n",
-				stats.TokensBefore, stats.TokensAfter, stats.RemovedCount, stats.DurationMillis))
-	}
-	req.SystemPrompt = ""
-	req.Message = ""
-	req.Messages = make([]ChatMessage, 0, len(out.Messages))
-	for _, m := range out.Messages {
-		req.Messages = append(req.Messages, ChatMessage{Role: m.Role, Content: m.Content})
-	}
-	return req
-}
-
-func loadRolesFromConfig() ([]roles.Role, error) {
-	dir := strings.TrimSpace(viper.GetString("roles.directory"))
-	if dir == "" {
-		defaultDir, err := roles.DefaultRolesDir()
-		if err != nil {
-			return nil, err
-		}
-		dir = defaultDir
-	}
-	if err := roles.EnsureRolesDir(dir); err != nil {
-		return nil, err
-	}
-	return roles.LoadRoles(dir)
-}
-
-func loadRoleKeywords() map[string][]string {
-	out := map[string][]string{}
-	for _, key := range viper.AllKeys() {
-		if !strings.HasPrefix(key, "roles.keywords.") {
-			continue
-		}
-		name := strings.TrimPrefix(key, "roles.keywords.")
-		if name == "" {
-			continue
-		}
-		out[name] = viper.GetStringSlice(key)
-	}
-	return out
 }

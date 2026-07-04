@@ -24,6 +24,60 @@ type MemoryItem struct {
 var callToolFn = CallTool
 var timeNow = time.Now
 
+// SearchContextIfEnabled searches MemPalace for a behavioral instruction matching
+// the query, filtered to the configured wing/room. Returns "" on any failure so
+// callers can fall back to roles without interrupting the user.
+func SearchContextIfEnabled(ctx context.Context, query string) (string, error) {
+	if !viper.GetBool("mempalace.context.enabled") {
+		return "", nil
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return "", nil
+	}
+	wing := strings.TrimSpace(viper.GetString("mempalace.context.wing"))
+	room := strings.TrimSpace(viper.GetString("mempalace.context.room"))
+	maxResults := viper.GetInt("mempalace.context.max_results")
+	if maxResults <= 0 {
+		maxResults = 1
+	}
+	minScore := viper.GetFloat64("mempalace.context.min_score")
+
+	args := map[string]interface{}{"query": query}
+	if maxResults > 0 {
+		args["max_results"] = maxResults
+	}
+	if minScore > 0 {
+		args["min_score"] = minScore
+	}
+	if wing != "" {
+		args["wing"] = wing
+	}
+	if room != "" {
+		args["room"] = room
+	}
+
+	raw, err := callToolFn(ctx, "mempalace_search", args)
+	if err != nil {
+		logEvent("context_search_failed", map[string]interface{}{"error": err.Error()})
+		return "", nil
+	}
+	items := parseMemoryItems(raw)
+	if minScore > 0 {
+		filtered := items[:0]
+		for _, item := range items {
+			if item.Score == 0 || item.Score >= minScore {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
+	}
+	if len(items) == 0 {
+		return "", nil
+	}
+	return strings.TrimSpace(items[0].Text), nil
+}
+
 func InjectIfEnabled(ctx context.Context, query string) (string, error) {
 	if !viper.GetBool("mempalace.inject.enabled") {
 		return "", nil
