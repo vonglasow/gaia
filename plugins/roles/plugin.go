@@ -42,7 +42,7 @@ func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		Use:   "list",
 		Short: "List available roles",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			roles, err := loadRolesWithDefaults()
+			roles, err := LoadRolesWithDefaults()
 			if err != nil {
 				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
 			}
@@ -63,7 +63,7 @@ func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		Short: "Show a role's prompt",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rolesList, err := loadRolesWithDefaults()
+			rolesList, err := LoadRolesWithDefaults()
 			if err != nil {
 				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
 			}
@@ -96,7 +96,7 @@ func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 				SetDebugWriter(nil)
 			}
 			input := strings.Join(args, " ")
-			keywords := loadKeywordConfig()
+			keywords := LoadKeywordConfig()
 			weight := viper.GetFloat64("roles.scoring.weight")
 			if weight == 0 {
 				weight = 1.0
@@ -118,7 +118,8 @@ func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	return []*cobra.Command{root}, nil
 }
 
-func loadRolesWithDefaults() ([]Role, error) {
+// LoadRolesWithDefaults loads roles from config directory, creating it if absent.
+func LoadRolesWithDefaults() ([]Role, error) {
 	dir := strings.TrimSpace(viper.GetString("roles.directory"))
 	if dir == "" {
 		defaultDir, err := DefaultRolesDir()
@@ -133,7 +134,8 @@ func loadRolesWithDefaults() ([]Role, error) {
 	return LoadRoles(dir)
 }
 
-func loadKeywordConfig() map[string][]string {
+// LoadKeywordConfig reads per-role keyword lists from viper config.
+func LoadKeywordConfig() map[string][]string {
 	out := map[string][]string{}
 	for _, key := range viper.AllKeys() {
 		if !strings.HasPrefix(key, "roles.keywords.") {
