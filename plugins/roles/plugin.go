@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gaia/kernel"
+	"gaia/plugins/mempalace"
 	"gaia/plugins/shared"
 
 	"github.com/spf13/cobra"
@@ -106,6 +107,9 @@ func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			LogScores(scores, threshold, result.RoleName)
 			body := fmt.Sprintf("Role: %s\nScore: %.2f\nMatched: %v\nReason: %s",
 				result.RoleName, result.Score, result.Matched, result.Reason)
+			if err := mempalace.PersistRoleDecision(cmd.Context(), input, result.RoleName, result.Reason); err != nil {
+				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("mempalace add drawer failed: %v", err))
+			}
 			return shared.PrintBox(cmd.OutOrStdout(), "Resolve", body)
 		},
 	}

@@ -15,6 +15,7 @@ import (
 
 	"gaia/kernel"
 	"gaia/plugins/cache"
+	"gaia/plugins/mempalace"
 	"gaia/plugins/roles"
 	"gaia/plugins/shared"
 	sanitizepkg "gaia/plugins/shared/sanitize"
@@ -98,6 +99,11 @@ func (p *AskPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			}
 			if err := validateAskConfig(req); err != nil {
 				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+			}
+			if memCtx, err := mempalace.InjectIfEnabled(cmd.Context(), msg); err != nil {
+				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+			} else if memCtx != "" {
+				req.SystemPrompt = mempalace.AppendMemory(req.SystemPrompt, memCtx)
 			}
 
 			provider, ok := p.providers[req.Provider]
@@ -184,6 +190,12 @@ func (p *AskPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 					Response:  finalText,
 					CreatedAt: time.Now().UTC(),
 				})
+			}
+			if err := mempalace.PersistAskResponse(cmd.Context(), msg, finalText); err != nil {
+				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("mempalace add drawer failed: %v", err))
+			}
+			if err := mempalace.DiaryWriteIfEnabled(cmd.Context(), msg, finalText); err != nil && viper.GetBool("debug") {
+				_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace diary write failed: %v\n", err))
 			}
 			return nil
 		},
