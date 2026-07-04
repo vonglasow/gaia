@@ -35,18 +35,29 @@ Agent guide for the **gaia** repository.
 
 ## Repo Overview (High Confidence)
 
-This is a Go CLI project with a small, clear structure (from the repo root):
+This is a Go CLI project with a kernel + plugin architecture (from the repo root):
 
 - `.github/` — GitHub Actions workflows (CI + release automation)
-- `api/` — API interaction and streaming; providers for Ollama, OpenAI, Mistral
-- `api/operator/` — operator (investigate) logic: planner, executor, safety, tools
-- `commands/` — CLI command definitions (including `investigate` for operator mode)
-- `config/` — configuration management
-- `main.go` — application entry point
-- `.pre-commit-config.yaml` — formatting/lint automation
-- `.goreleaser.yaml` — release packaging config
+- `kernel/` — Plugin lifecycle: registration, dependency resolution, config validation
+- `config/` — Configuration loading and schema management (Viper-based)
+- `plugins/` — All feature plugins (each implements the `kernel.Plugin` interface):
+  - `ask/` — One-shot LLM queries; providers: Ollama, OpenAI, Mistral. Exports `ApplySanitize`.
+  - `chat/` — Interactive chat session (disabled by default)
+  - `investigate/` — Agentic operator loop (planner + executor + safety)
+  - `mempalace/` — MemPalace MCP client; context injection and persistence
+  - `roles/` — Role management and auto-selection. Exports `LoadRolesWithDefaults`, `LoadKeywordConfig`.
+  - `sanitize/` — Standalone sanitize plugin
+  - `cache/` — Response caching
+  - `config/` — `gaia config` CLI commands
+  - `shared/` — Shared UI helpers (TUI, boxes, progress)
+  - `tools/` — Operator tools
+  - `version/` — Version command
+- `main.go` — Entry point: kernel → RegisterAll → Execute
+- `.pre-commit-config.yaml` — Formatting/lint automation
+- `.goreleaser.yaml` — Release packaging config
 - `README.md` — Documentation
 - `go.mod` / `go.sum` — Go modules
+- `_staging/` — Work-in-progress exploratory code; not compiled into the binary
 
 (If new directories appear, do not assume they are wired into CI without checking.)
 
