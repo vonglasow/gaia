@@ -127,7 +127,7 @@ func searchMemories(ctx context.Context, query string, maxResults int, minScore 
 }
 
 func DiaryWriteIfEnabled(ctx context.Context, query, response string) error {
-	if !viper.GetBool("mempalace.inject.enabled") {
+	if !viper.GetBool("mempalace.diary.enabled") {
 		return nil
 	}
 	query = strings.TrimSpace(query)

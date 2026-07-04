@@ -196,8 +196,8 @@ func (p *InvestigatePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error)
 			if err := mempalace.DiaryWriteIfEnabled(cmd.Context(), goal, finalAnswer); err != nil && viper.GetBool("debug") {
 				_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace diary write failed: %v\n", err))
 			}
-			if err := mempalace.PersistInvestigateResult(cmd.Context(), goal, finalAnswer); err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("mempalace add drawer failed: %v", err))
+			if err := mempalace.PersistInvestigateResult(cmd.Context(), goal, finalAnswer); err != nil && viper.GetBool("debug") {
+				_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace persist failed: %v\n", err))
 			}
 
 			return shared.PrintBox(cmd.OutOrStdout(), "Investigate", finalAnswer)

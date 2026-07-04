@@ -107,8 +107,8 @@ func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			LogScores(scores, threshold, result.RoleName)
 			body := fmt.Sprintf("Role: %s\nScore: %.2f\nMatched: %v\nReason: %s",
 				result.RoleName, result.Score, result.Matched, result.Reason)
-			if err := mempalace.PersistRoleDecision(cmd.Context(), input, result.RoleName, result.Reason); err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("mempalace add drawer failed: %v", err))
+			if err := mempalace.PersistRoleDecision(cmd.Context(), input, result.RoleName, result.Reason); err != nil && viper.GetBool("debug") {
+				_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace persist failed: %v\n", err))
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "Resolve", body)
 		},
