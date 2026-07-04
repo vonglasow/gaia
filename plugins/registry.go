@@ -7,6 +7,7 @@ import (
 	"gaia/plugins/chat"
 	configplugin "gaia/plugins/config"
 	"gaia/plugins/investigate"
+	"gaia/plugins/mempalace"
 	"gaia/plugins/roles"
 	"gaia/plugins/sanitize"
 	"gaia/plugins/tools"
@@ -37,6 +38,9 @@ func RegisterAll(k *kernel.Kernel) error {
 		return err
 	}
 	if err := k.RegisterPlugin(investigate.NewInvestigatePlugin()); err != nil {
+		return err
+	}
+	if err := k.RegisterPlugin(mempalace.NewMemPalacePlugin()); err != nil {
 		return err
 	}
 	if err := k.RegisterPlugin(roles.NewRolesPlugin()); err != nil {
