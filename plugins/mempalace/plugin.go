@@ -38,6 +38,12 @@ func (p *MemPalacePlugin) ConfigSchema() []string {
 		"mempalace.inject.enabled",
 		"mempalace.inject.max_results",
 		"mempalace.inject.min_score",
+		"mempalace.diary.enabled",
+		"mempalace.context.enabled",
+		"mempalace.context.wing",
+		"mempalace.context.room",
+		"mempalace.context.max_results",
+		"mempalace.context.min_score",
 	}
 }
 
