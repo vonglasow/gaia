@@ -18,6 +18,8 @@ func (p *VersionPlugin) ConfigSchema() []string {
 	return nil
 }
 
+func (p *VersionPlugin) MCPTools() []kernel.MCPTool { return nil }
+
 func (p *VersionPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   "version",

@@ -44,6 +44,8 @@ func (p *ToolsPlugin) ConfigSchema() []string {
 	}
 }
 
+func (p *ToolsPlugin) MCPTools() []kernel.MCPTool { return nil }
+
 func (p *ToolsPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:   "tool",

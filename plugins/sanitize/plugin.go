@@ -23,6 +23,8 @@ func (p *SanitizerPlugin) ConfigSchema() []string {
 	}
 }
 
+func (p *SanitizerPlugin) MCPTools() []kernel.MCPTool { return nil }
+
 func (p *SanitizerPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	return []*cobra.Command{}, nil
 }

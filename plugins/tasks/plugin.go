@@ -31,6 +31,10 @@ func (p *TasksPlugin) ConfigSchema() []string {
 	}
 }
 
+func (p *TasksPlugin) MCPTools() []kernel.MCPTool {
+	return tasksMCPTools()
+}
+
 func (p *TasksPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:   "tasks",
@@ -490,7 +494,7 @@ func (p *TasksPlugin) timesheetCmd() *cobra.Command {
 
 // --- helpers ---
 
-func newLLMClient(cmd *cobra.Command) *LLMClient {
+func newLLMClientFromConfig() *LLMClient {
 	host := viper.GetString("tasks.ollama_host")
 	if host == "" {
 		host = viper.GetString("ask.host")
@@ -511,8 +515,12 @@ func newLLMClient(cmd *cobra.Command) *LLMClient {
 	}
 	c := NewLLMClient(host, port)
 	c.model = model
-	_ = cmd
 	return c
+}
+
+func newLLMClient(cmd *cobra.Command) *LLMClient {
+	_ = cmd
+	return newLLMClientFromConfig()
 }
 
 func filterTasks(tasks []Task, status, project string) []Task {

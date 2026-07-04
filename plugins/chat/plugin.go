@@ -45,6 +45,8 @@ func (p *ChatPlugin) ConfigSchema() []string {
 	}
 }
 
+func (p *ChatPlugin) MCPTools() []kernel.MCPTool { return nil }
+
 func (p *ChatPlugin) RegisterProvider(provider ask.Provider) {
 	if provider == nil {
 		return
