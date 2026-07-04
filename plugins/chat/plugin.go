@@ -196,8 +196,8 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 							if entry, ok, err := cache.Get(cacheKey); err == nil && ok {
 								history = append(history, ask.ChatMessage{Role: "assistant", Content: entry.Response})
 								assistantTurns++
-								if err := mempalace.PersistChatTurn(cmd.Context(), sessionID, assistantTurns, line, entry.Response); err != nil {
-									return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("mempalace add drawer failed: %v", err))
+								if err := mempalace.PersistChatTurn(cmd.Context(), sessionID, assistantTurns, line, entry.Response); err != nil && viper.GetBool("debug") {
+									_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace persist failed: %v\n", err))
 								}
 								_ = shared.PrintBox(cmd.OutOrStdout(), "Assistant", entry.Response)
 								continue
@@ -239,8 +239,8 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 				}
 				history = append(history, ask.ChatMessage{Role: "assistant", Content: finalText})
 				assistantTurns++
-				if err := mempalace.PersistChatTurn(cmd.Context(), sessionID, assistantTurns, line, finalText); err != nil {
-					return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("mempalace add drawer failed: %v", err))
+				if err := mempalace.PersistChatTurn(cmd.Context(), sessionID, assistantTurns, line, finalText); err != nil && viper.GetBool("debug") {
+					_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace persist failed: %v\n", err))
 				}
 				if err := mempalace.DiaryWriteIfEnabled(cmd.Context(), line, finalText); err != nil && viper.GetBool("debug") {
 					_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace diary write failed: %v\n", err))
@@ -285,7 +285,7 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 func validateChatConfig(req ask.AskRequest) error {
 	missing := []string{}
 	if strings.TrimSpace(req.Provider) == "" {
-		missing = append(missing, "model")
+		missing = append(missing, "chat.provider")
 	}
 	if strings.TrimSpace(req.Host) == "" {
 		missing = append(missing, "host")

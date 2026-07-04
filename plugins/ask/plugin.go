@@ -191,8 +191,8 @@ func (p *AskPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 					CreatedAt: time.Now().UTC(),
 				})
 			}
-			if err := mempalace.PersistAskResponse(cmd.Context(), msg, finalText); err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("mempalace add drawer failed: %v", err))
+			if err := mempalace.PersistAskResponse(cmd.Context(), msg, finalText); err != nil && viper.GetBool("debug") {
+				_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace persist failed: %v\n", err))
 			}
 			if err := mempalace.DiaryWriteIfEnabled(cmd.Context(), msg, finalText); err != nil && viper.GetBool("debug") {
 				_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace diary write failed: %v\n", err))
@@ -534,7 +534,7 @@ func (p *OllamaProvider) pullModel(_ context.Context, client *http.Client, baseU
 func validateAskConfig(req AskRequest) error {
 	missing := []string{}
 	if strings.TrimSpace(req.Provider) == "" {
-		missing = append(missing, "ask.model")
+		missing = append(missing, "ask.provider")
 	}
 	if strings.TrimSpace(req.Host) == "" {
 		missing = append(missing, "ask.host")
