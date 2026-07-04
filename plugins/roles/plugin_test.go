@@ -15,7 +15,7 @@ func TestLoadKeywordConfig(t *testing.T) {
 	viper.Set("roles.keywords.code", []string{"code", "bug"})
 	viper.Set("roles.keywords.shell", []string{"shell"})
 
-	kw := loadKeywordConfig()
+	kw := LoadKeywordConfig()
 	if len(kw) != 2 {
 		t.Fatalf("expected 2 keyword lists, got %d", len(kw))
 	}
@@ -30,7 +30,7 @@ func TestLoadRolesWithDefaults_UsesConfigDir(t *testing.T) {
 
 	dir := t.TempDir()
 	viper.Set("roles.directory", dir)
-	roles, err := loadRolesWithDefaults()
+	roles, err := LoadRolesWithDefaults()
 	if err != nil {
 		t.Fatalf("loadRolesWithDefaults: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestLoadRolesWithDefaults_UsesConfigDir(t *testing.T) {
 	if err := os.WriteFile(roleFile, []byte("system_prompt: hello\n"), 0o644); err != nil {
 		t.Fatalf("write role: %v", err)
 	}
-	roles, err = loadRolesWithDefaults()
+	roles, err = LoadRolesWithDefaults()
 	if err != nil {
 		t.Fatalf("loadRolesWithDefaults: %v", err)
 	}
