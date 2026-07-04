@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -30,10 +29,10 @@ type ServePlugin struct {
 
 func NewServePlugin() *ServePlugin { return &ServePlugin{} }
 
-func (p *ServePlugin) ID() string             { return "serve" }
-func (p *ServePlugin) DefaultEnabled() bool   { return true }
-func (p *ServePlugin) DependsOn() []string    { return nil }
-func (p *ServePlugin) ConfigSchema() []string { return []string{"serve.port"} }
+func (p *ServePlugin) ID() string                 { return "serve" }
+func (p *ServePlugin) DefaultEnabled() bool       { return true }
+func (p *ServePlugin) DependsOn() []string        { return nil }
+func (p *ServePlugin) ConfigSchema() []string     { return []string{"serve.port"} }
 func (p *ServePlugin) MCPTools() []kernel.MCPTool { return nil }
 
 func (p *ServePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
@@ -73,7 +72,9 @@ func (p *ServePlugin) forkDaemon(cmd *cobra.Command) error {
 	pidFile := pidPath()
 	if pid, err := readPID(pidFile); err == nil {
 		if isRunning(pid) {
-			fmt.Fprintf(cmd.OutOrStdout(), "gaia serve already running (pid %d)\n", pid)
+			if err := writeStdoutf(cmd, "gaia serve already running (pid %d)\n", pid); err != nil {
+				return err
+			}
 			return nil
 		}
 	}
@@ -93,25 +94,40 @@ func (p *ServePlugin) forkDaemon(cmd *cobra.Command) error {
 		return fmt.Errorf("executable path: %w", err)
 	}
 
-	child := exec.Command(exe, "serve")
-	child.Env = append(os.Environ(), daemonEnv+"=1")
-	child.Stdout = logFile
-	child.Stderr = logFile
-	child.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-
-	if err := child.Start(); err != nil {
+	devNull, err := os.Open(os.DevNull)
+	if err != nil {
 		_ = logFile.Close()
+		return fmt.Errorf("open null device: %w", err)
+	}
+
+	child, err := os.StartProcess(exe, []string{exe, "serve"}, &os.ProcAttr{
+		Env:   append(os.Environ(), daemonEnv+"=1"),
+		Files: []*os.File{devNull, logFile, logFile},
+		Sys:   &syscall.SysProcAttr{Setsid: true},
+	})
+	_ = devNull.Close()
+	_ = logFile.Close()
+	if err != nil {
 		return fmt.Errorf("start daemon: %w", err)
 	}
-	_ = logFile.Close()
 
-	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(child.Process.Pid)), 0644); err != nil {
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(child.Pid)), 0644); err != nil {
+		_ = child.Release()
 		return fmt.Errorf("write pid: %w", err)
 	}
+	if err := child.Release(); err != nil {
+		return fmt.Errorf("release daemon process: %w", err)
+	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "gaia serve started (pid %d)\n", child.Process.Pid)
-	fmt.Fprintf(cmd.OutOrStdout(), "MCP endpoint: http://localhost:%s/mcp\n", defaultPort)
-	fmt.Fprintf(cmd.OutOrStdout(), "Log: %s\n", logPath())
+	if err := writeStdoutf(cmd, "gaia serve started (pid %d)\n", child.Pid); err != nil {
+		return err
+	}
+	if err := writeStdoutf(cmd, "MCP endpoint: http://localhost:%s/mcp\n", defaultPort); err != nil {
+		return err
+	}
+	if err := writeStdoutf(cmd, "Log: %s\n", logPath()); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -173,12 +189,16 @@ func (p *ServePlugin) runDaemon(ctx context.Context) error {
 func (p *ServePlugin) runStop(cmd *cobra.Command, _ []string) error {
 	pid, err := readPID(pidPath())
 	if err != nil {
-		fmt.Fprintln(cmd.OutOrStdout(), "gaia serve is not running")
+		if err := writeStdoutln(cmd, "gaia serve is not running"); err != nil {
+			return err
+		}
 		return nil
 	}
 	if !isRunning(pid) {
 		_ = os.Remove(pidPath())
-		fmt.Fprintln(cmd.OutOrStdout(), "gaia serve is not running (stale pid removed)")
+		if err := writeStdoutln(cmd, "gaia serve is not running (stale pid removed)"); err != nil {
+			return err
+		}
 		return nil
 	}
 	proc, _ := os.FindProcess(pid)
@@ -186,22 +206,32 @@ func (p *ServePlugin) runStop(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("kill pid %d: %w", pid, err)
 	}
 	_ = os.Remove(pidPath())
-	fmt.Fprintf(cmd.OutOrStdout(), "gaia serve stopped (pid %d)\n", pid)
+	if err := writeStdoutf(cmd, "gaia serve stopped (pid %d)\n", pid); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (p *ServePlugin) runStatus(cmd *cobra.Command, _ []string) error {
 	pid, err := readPID(pidPath())
 	if err != nil {
-		fmt.Fprintln(cmd.OutOrStdout(), "gaia serve: stopped")
+		if err := writeStdoutln(cmd, "gaia serve: stopped"); err != nil {
+			return err
+		}
 		return nil
 	}
 	if isRunning(pid) {
-		fmt.Fprintf(cmd.OutOrStdout(), "gaia serve: running (pid %d)\n", pid)
-		fmt.Fprintf(cmd.OutOrStdout(), "MCP endpoint: http://localhost:%s/mcp\n", defaultPort)
+		if err := writeStdoutf(cmd, "gaia serve: running (pid %d)\n", pid); err != nil {
+			return err
+		}
+		if err := writeStdoutf(cmd, "MCP endpoint: http://localhost:%s/mcp\n", defaultPort); err != nil {
+			return err
+		}
 	} else {
 		_ = os.Remove(pidPath())
-		fmt.Fprintln(cmd.OutOrStdout(), "gaia serve: stopped (stale pid removed)")
+		if err := writeStdoutln(cmd, "gaia serve: stopped (stale pid removed)"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -222,6 +252,16 @@ func readPID(path string) (int, error) {
 		return 0, err
 	}
 	return strconv.Atoi(strings.TrimSpace(string(b)))
+}
+
+func writeStdoutf(cmd *cobra.Command, format string, args ...interface{}) error {
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), format, args...)
+	return err
+}
+
+func writeStdoutln(cmd *cobra.Command, args ...interface{}) error {
+	_, err := fmt.Fprintln(cmd.OutOrStdout(), args...)
+	return err
 }
 
 func isRunning(pid int) bool {

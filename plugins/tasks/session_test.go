@@ -18,7 +18,9 @@ func writeFakeSession(t *testing.T, dir, projectDir string, turns []map[string]i
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 	f, err := os.CreateTemp(projDir, "*.jsonl")
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
 	for _, turn := range turns {
 		b, _ := json.Marshal(turn)
 		_, _ = f.Write(append(b, '\n'))

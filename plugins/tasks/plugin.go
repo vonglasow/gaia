@@ -20,9 +20,9 @@ type TasksPlugin struct{}
 
 func NewTasksPlugin() *TasksPlugin { return &TasksPlugin{} }
 
-func (p *TasksPlugin) ID() string            { return "tasks" }
-func (p *TasksPlugin) DefaultEnabled() bool  { return true }
-func (p *TasksPlugin) DependsOn() []string   { return []string{"mempalace"} }
+func (p *TasksPlugin) ID() string           { return "tasks" }
+func (p *TasksPlugin) DefaultEnabled() bool { return true }
+func (p *TasksPlugin) DependsOn() []string  { return []string{"mempalace"} }
 func (p *TasksPlugin) ConfigSchema() []string {
 	return []string{
 		"tasks.ollama_host",
@@ -75,11 +75,12 @@ func (p *TasksPlugin) listCmd() *cobra.Command {
 			filtered := filterTasks(tasks, status, project)
 			view := BoardView(filtered, flat)
 			if strings.TrimSpace(view) == "" {
-				fmt.Fprintln(cmd.OutOrStdout(), "No active tasks found.")
+				if err := writeStdoutln(cmd, "No active tasks found."); err != nil {
+					return err
+				}
 				return nil
 			}
-			fmt.Fprint(cmd.OutOrStdout(), view)
-			return nil
+			return writeStdout(cmd, view)
 		},
 	}
 	cmd.Flags().Bool("flat", false, "Flat list sorted by priority score")
@@ -128,10 +129,14 @@ func (p *TasksPlugin) addCmd() *cobra.Command {
 
 			// LLM inference
 			llm := newLLMClient(cmd)
-			fmt.Fprintf(cmd.ErrOrStderr(), "Inférence LLM en cours…\n")
+			if err := writeStderrf(cmd, "Inférence LLM en cours…\n"); err != nil {
+				return err
+			}
 			meta, err := llm.InferTaskMeta(cmd.Context(), task)
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "[warn] LLM inférence échouée: %v\n", err)
+				if writeErr := writeStderrf(cmd, "[warn] LLM inférence échouée: %v\n", err); writeErr != nil {
+					return writeErr
+				}
 			} else {
 				task.Effort = meta.Effort
 				task.Impact = meta.Impact
@@ -146,10 +151,14 @@ func (p *TasksPlugin) addCmd() *cobra.Command {
 			if err != nil {
 				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Ajout: %v", err))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Task %s créée (drawer: %s)\n", created.ID, created.DrawerID)
+			if err := writeStdoutf(cmd, "Task %s créée (drawer: %s)\n", created.ID, created.DrawerID); err != nil {
+				return err
+			}
 			if meta.PriorityScore > 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "  Score: %d | %s | effort: %s | impact: %s | category: %s\n",
-					meta.PriorityScore, task.Eisenhower, task.Effort, task.Impact, task.Category)
+				if err := writeStdoutf(cmd, "  Score: %d | %s | effort: %s | impact: %s | category: %s\n",
+					meta.PriorityScore, task.Eisenhower, task.Effort, task.Impact, task.Category); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -191,8 +200,7 @@ func (p *TasksPlugin) updateCmd() *cobra.Command {
 			if err := store.Update(cmd.Context(), task); err != nil {
 				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Update: %v", err))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Task %s mise à jour.\n", task.ID)
-			return nil
+			return writeStdoutf(cmd, "Task %s mise à jour.\n", task.ID)
 		},
 	}
 	cmd.Flags().String("title", "", "New title")
@@ -219,8 +227,7 @@ func (p *TasksPlugin) doneCmd() *cobra.Command {
 			if err := store.Update(cmd.Context(), task); err != nil {
 				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Done: %v", err))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Task %s marquée comme done.\n", task.ID)
-			return nil
+			return writeStdoutf(cmd, "Task %s marquée comme done.\n", task.ID)
 		},
 	}
 }
@@ -257,8 +264,7 @@ func (p *TasksPlugin) logCmd() *cobra.Command {
 			}); err != nil {
 				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Log: %v", err))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Loggué %s sur %s (%s)\n", FormatMinutes(mins), args[0], date)
-			return nil
+			return writeStdoutf(cmd, "Loggué %s sur %s (%s)\n", FormatMinutes(mins), args[0], date)
 		},
 	}
 	cmd.Flags().String("type", "work", "Log type: work or meeting")
@@ -287,11 +293,15 @@ func (p *TasksPlugin) prioritizeCmd() *cobra.Command {
 				}
 			}
 			if len(active) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "Aucune task active.")
+				if err := writeStdoutln(cmd, "Aucune task active."); err != nil {
+					return err
+				}
 				return nil
 			}
 
-			fmt.Fprintf(cmd.ErrOrStderr(), "Priorisation de %d tasks via LLM…\n", len(active))
+			if err := writeStderrf(cmd, "Priorisation de %d tasks via LLM…\n", len(active)); err != nil {
+				return err
+			}
 			llm := newLLMClient(cmd)
 			today := time.Now().Format("2006-01-02")
 			result, err := llm.Prioritize(cmd.Context(), active, today)
@@ -315,7 +325,9 @@ func (p *TasksPlugin) prioritizeCmd() *cobra.Command {
 				task.Impact = pt.Impact
 				task.Category = pt.Category
 				if err := store.Update(cmd.Context(), task); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "[warn] update %s: %v\n", task.ID, err)
+					if writeErr := writeStderrf(cmd, "[warn] update %s: %v\n", task.ID, err); writeErr != nil {
+						return writeErr
+					}
 				}
 			}
 
@@ -350,7 +362,9 @@ func (p *TasksPlugin) inferSessionsCmd() *cobra.Command {
 				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Lecture sessions: %v", err))
 			}
 			if len(sessions) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "Aucune session à inférer.")
+				if err := writeStdoutln(cmd, "Aucune session à inférer."); err != nil {
+					return err
+				}
 				return nil
 			}
 
@@ -360,7 +374,9 @@ func (p *TasksPlugin) inferSessionsCmd() *cobra.Command {
 				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
 			}
 
-			fmt.Fprintf(cmd.ErrOrStderr(), "Inférence de %d sessions via LLM…\n", len(sessions))
+			if err := writeStderrf(cmd, "Inférence de %d sessions via LLM…\n", len(sessions)); err != nil {
+				return err
+			}
 			llm := newLLMClient(cmd)
 			entries, err := llm.InferSessions(cmd.Context(), tasks, sessions)
 			if err != nil {
@@ -374,11 +390,15 @@ func (p *TasksPlugin) inferSessionsCmd() *cobra.Command {
 					Type:            "work",
 					Source:          "inferred",
 				}); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "[warn] log %s: %v\n", e.TaskID, err)
+					if writeErr := writeStderrf(cmd, "[warn] log %s: %v\n", e.TaskID, err); writeErr != nil {
+						return writeErr
+					}
 					continue
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Loggué %dmin sur %s (%s, confidence=%.0f%%)\n",
-					e.DurationMinutes, e.TaskID, e.Date, e.Confidence*100)
+				if err := writeStdoutf(cmd, "Loggué %dmin sur %s (%s, confidence=%.0f%%)\n",
+					e.DurationMinutes, e.TaskID, e.Date, e.Confidence*100); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -406,15 +426,16 @@ func (p *TasksPlugin) dailyCmd() *cobra.Command {
 			// Try to get journal
 			journal := ""
 			if raw, jerr := mempalace.CallTool(cmd.Context(), "mempalace_diary_read", map[string]interface{}{}); jerr == nil {
-				var result struct{ Content string `json:"content"` }
+				var result struct {
+					Content string `json:"content"`
+				}
 				if err := unmarshalMCP(raw, &result); err == nil {
 					journal = result.Content
 				}
 			}
 
 			report := DailyReport(tasks, today, yesterday, journal)
-			fmt.Fprint(cmd.OutOrStdout(), report)
-			return nil
+			return writeStdout(cmd, report)
 		},
 	}
 }
@@ -444,8 +465,7 @@ func (p *TasksPlugin) weeklyCmd() *cobra.Command {
 			to := friday.Format("2006-01-02")
 
 			report := WeeklyReport(tasks, from, to)
-			fmt.Fprint(cmd.OutOrStdout(), report)
-			return nil
+			return writeStdout(cmd, report)
 		},
 	}
 }
@@ -484,8 +504,7 @@ func (p *TasksPlugin) timesheetCmd() *cobra.Command {
 			to := friday.Format("2006-01-02")
 
 			report := TimesheetReport(tasks, from, to)
-			fmt.Fprint(cmd.OutOrStdout(), report)
-			return nil
+			return writeStdout(cmd, report)
 		},
 	}
 	cmd.Flags().String("week", "", "Week start (Monday, YYYY-MM-DD, default: current week)")
@@ -547,4 +566,24 @@ func prompt(label string) string {
 		return strings.TrimSpace(scanner.Text())
 	}
 	return ""
+}
+
+func writeStdout(cmd *cobra.Command, text string) error {
+	_, err := fmt.Fprint(cmd.OutOrStdout(), text)
+	return err
+}
+
+func writeStdoutf(cmd *cobra.Command, format string, args ...interface{}) error {
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), format, args...)
+	return err
+}
+
+func writeStdoutln(cmd *cobra.Command, args ...interface{}) error {
+	_, err := fmt.Fprintln(cmd.OutOrStdout(), args...)
+	return err
+}
+
+func writeStderrf(cmd *cobra.Command, format string, args ...interface{}) error {
+	_, err := fmt.Fprintf(cmd.ErrOrStderr(), format, args...)
+	return err
 }

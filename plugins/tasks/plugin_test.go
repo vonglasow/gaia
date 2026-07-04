@@ -97,7 +97,9 @@ func TestFilterTasks_CaseInsensitiveProject(t *testing.T) {
 
 func TestParseJSON_StripCodeBlock(t *testing.T) {
 	text := "```json\n{\"effort\":\"medium\"}\n```"
-	var v struct{ Effort string `json:"effort"` }
+	var v struct {
+		Effort string `json:"effort"`
+	}
 	err := parseJSON(text, &v)
 	assert.NoError(t, err)
 	assert.Equal(t, "medium", v.Effort)
@@ -105,7 +107,9 @@ func TestParseJSON_StripCodeBlock(t *testing.T) {
 
 func TestParseJSON_WithPreamble(t *testing.T) {
 	text := "Sure! Here is the JSON:\n{\"effort\":\"large\"}"
-	var v struct{ Effort string `json:"effort"` }
+	var v struct {
+		Effort string `json:"effort"`
+	}
 	err := parseJSON(text, &v)
 	assert.NoError(t, err)
 	assert.Equal(t, "large", v.Effort)

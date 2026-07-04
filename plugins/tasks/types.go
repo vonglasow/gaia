@@ -51,10 +51,10 @@ const (
 
 // TimeLog records one work session on a task.
 type TimeLog struct {
-	Date            string `json:"date"`              // YYYY-MM-DD
+	Date            string `json:"date"` // YYYY-MM-DD
 	DurationMinutes int    `json:"duration_minutes"`
-	Type            string `json:"type"`              // "work" | "meeting"
-	Source          string `json:"source"`            // "manual" | "inferred"
+	Type            string `json:"type"`   // "work" | "meeting"
+	Source          string `json:"source"` // "manual" | "inferred"
 	Note            string `json:"note,omitempty"`
 }
 
@@ -65,13 +65,13 @@ type Task struct {
 	Title         string     `json:"title"`
 	Description   string     `json:"description,omitempty"`
 	Status        Status     `json:"status"`
-	Priority      string     `json:"priority,omitempty"`        // HAUTE | MOYENNE | BASSE
+	Priority      string     `json:"priority,omitempty"` // HAUTE | MOYENNE | BASSE
 	Eisenhower    Eisenhower `json:"eisenhower,omitempty"`
 	Category      Category   `json:"category,omitempty"`
 	Effort        Effort     `json:"effort,omitempty"`
 	Impact        Impact     `json:"impact,omitempty"`
 	PriorityScore int        `json:"priority_score,omitempty"` // 0-100, LLM-computed
-	Deadline      string     `json:"deadline,omitempty"`        // YYYY-MM-DD
+	Deadline      string     `json:"deadline,omitempty"`       // YYYY-MM-DD
 	Project       string     `json:"project,omitempty"`
 	Objective     string     `json:"objective,omitempty"`
 	Dependencies  []string   `json:"dependencies,omitempty"`

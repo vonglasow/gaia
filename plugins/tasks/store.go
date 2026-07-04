@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Wing     = "tasks"
+	Wing      = "tasks"
 	RoomBoard = "board"
 	RoomMeta  = "meta"
 )
@@ -192,8 +192,7 @@ func unwrapMCPContent(raw json.RawMessage) json.RawMessage {
 		if text == "" {
 			continue
 		}
-		var js interface{}
-		if err := json.Unmarshal(json.RawMessage(text), &js); err == nil {
+		if json.Valid([]byte(text)) {
 			return json.RawMessage(text)
 		}
 	}
