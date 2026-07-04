@@ -13,6 +13,7 @@ import (
 	"gaia/plugins/mempalace"
 	"gaia/plugins/roles"
 	"gaia/plugins/shared"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -320,4 +321,3 @@ func toCacheMessages(history []ask.ChatMessage) []cache.Message {
 	}
 	return out
 }
-

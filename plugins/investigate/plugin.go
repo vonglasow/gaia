@@ -14,6 +14,7 @@ import (
 	"gaia/plugins/mempalace"
 	"gaia/plugins/roles"
 	"gaia/plugins/shared"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -379,4 +380,3 @@ func toChatMessages(messages []Message) []ask.ChatMessage {
 	}
 	return out
 }
-

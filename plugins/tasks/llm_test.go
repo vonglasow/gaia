@@ -33,8 +33,8 @@ func TestLLMClient_InferTaskMeta(t *testing.T) {
 	client := newLLMClientFromURL(srv.URL, 5*time.Second)
 
 	meta, err := client.InferTaskMeta(context.Background(), Task{
-		ID:    "T048",
-		Title: "New task to categorize",
+		ID:          "T048",
+		Title:       "New task to categorize",
 		Description: "Description here",
 	})
 	require.NoError(t, err)

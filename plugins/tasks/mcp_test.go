@@ -3,32 +3,11 @@ package tasks
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// injectStore replaces NewStore in tests via a closure — used by capturing store in handlers.
-// Since mcp tool handlers call NewStore() directly, we inject via the package-level callTool.
-// For unit tests we just test the input/output wiring using a fake store.
-
-func makeMCPStore(responses map[string]json.RawMessage) *Store {
-	return makeTestStore(responses)
-}
-
-// callMCPTool finds a tool by name from tasksMCPTools() and invokes its handler.
-func callMCPTool(t *testing.T, name string, args map[string]interface{}) (string, error) {
-	t.Helper()
-	for _, tool := range tasksMCPTools() {
-		if tool.Name == name {
-			return tool.Handler(context.Background(), args)
-		}
-	}
-	t.Fatalf("MCP tool %q not found", name)
-	return "", nil
-}
 
 func TestTasksMCPTools_Count(t *testing.T) {
 	tools := tasksMCPTools()
@@ -277,6 +256,6 @@ func TestMCPToolSchemas_ValidJSON(t *testing.T) {
 		b, err := json.Marshal(tool.InputSchema)
 		require.NoError(t, err, "tool %s InputSchema should be JSON-serializable", tool.Name)
 		assert.Contains(t, string(b), `"type"`, "tool %s schema should have type field", tool.Name)
-		fmt.Sprintf("%s: %s", tool.Name, b) // verify it's valid
+		t.Logf("%s: %s", tool.Name, b)
 	}
 }

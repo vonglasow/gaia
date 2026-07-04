@@ -43,8 +43,8 @@ func TestStore_ListAll(t *testing.T) {
 	})
 
 	store := makeTestStore(map[string]json.RawMessage{
-		"mempalace_list_drawers":                  listResp,
-		"mempalace_get_drawer:" + drawerID:        getResp,
+		"mempalace_list_drawers":           listResp,
+		"mempalace_get_drawer:" + drawerID: getResp,
 	})
 
 	tasks, err := store.ListAll(context.Background())
@@ -68,8 +68,8 @@ func TestStore_ListAll_SkipsNonTaskDrawers(t *testing.T) {
 	})
 
 	store := makeTestStore(map[string]json.RawMessage{
-		"mempalace_list_drawers":                         listResp,
-		"mempalace_get_drawer:drawer_tasks_board_abc":   getResp,
+		"mempalace_list_drawers":                      listResp,
+		"mempalace_get_drawer:drawer_tasks_board_abc": getResp,
 	})
 
 	tasks, err := store.ListAll(context.Background())
@@ -88,8 +88,8 @@ func TestStore_Get_Found(t *testing.T) {
 	getResp, _ := json.Marshal(map[string]interface{}{"content": taskContent})
 
 	store := makeTestStore(map[string]json.RawMessage{
-		"mempalace_list_drawers":             listResp,
-		"mempalace_get_drawer:" + drawerID:  getResp,
+		"mempalace_list_drawers":           listResp,
+		"mempalace_get_drawer:" + drawerID: getResp,
 	})
 
 	task, err := store.Get(context.Background(), "T047")
@@ -212,7 +212,7 @@ func TestStore_NextID(t *testing.T) {
 	getResp, _ := json.Marshal(map[string]interface{}{"content": taskContent})
 
 	store := makeTestStore(map[string]json.RawMessage{
-		"mempalace_list_drawers":            listResp,
+		"mempalace_list_drawers":           listResp,
 		"mempalace_get_drawer:" + drawerID: getResp,
 	})
 
