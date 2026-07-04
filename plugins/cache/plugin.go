@@ -27,6 +27,8 @@ func (p *CachePlugin) ConfigSchema() []string {
 	}
 }
 
+func (p *CachePlugin) MCPTools() []kernel.MCPTool { return nil }
+
 func (p *CachePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:   "cache",

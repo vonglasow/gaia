@@ -24,6 +24,8 @@ func (p *PluginsPlugin) ConfigSchema() []string {
 	return nil
 }
 
+func (p *PluginsPlugin) MCPTools() []kernel.MCPTool { return nil }
+
 func (p *PluginsPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:   "plugins",

@@ -22,10 +22,11 @@ type testPlugin struct {
 	cmdName string
 }
 
-func (p *testPlugin) ID() string             { return p.id }
-func (p *testPlugin) DefaultEnabled() bool   { return p.def }
-func (p *testPlugin) DependsOn() []string    { return p.deps }
-func (p *testPlugin) ConfigSchema() []string { return p.schema }
+func (p *testPlugin) ID() string                { return p.id }
+func (p *testPlugin) DefaultEnabled() bool      { return p.def }
+func (p *testPlugin) DependsOn() []string       { return p.deps }
+func (p *testPlugin) ConfigSchema() []string    { return p.schema }
+func (p *testPlugin) MCPTools() []kernel.MCPTool { return nil }
 func (p *testPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	if p.cmdName == "" {
 		return nil, nil

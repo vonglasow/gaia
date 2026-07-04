@@ -47,6 +47,8 @@ func (p *MemPalacePlugin) ConfigSchema() []string {
 	}
 }
 
+func (p *MemPalacePlugin) MCPTools() []kernel.MCPTool { return nil }
+
 func (p *MemPalacePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:   "mem",

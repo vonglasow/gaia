@@ -32,6 +32,8 @@ func (p *RolesPlugin) ConfigSchema() []string {
 	}
 }
 
+func (p *RolesPlugin) MCPTools() []kernel.MCPTool { return nil }
+
 func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:   "roles",

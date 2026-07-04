@@ -52,6 +52,8 @@ func (p *AskPlugin) ConfigSchema() []string {
 	}
 }
 
+func (p *AskPlugin) MCPTools() []kernel.MCPTool { return nil }
+
 func (p *AskPlugin) RegisterProvider(provider Provider) {
 	if provider == nil {
 		return

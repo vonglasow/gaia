@@ -10,6 +10,7 @@ import (
 	"gaia/plugins/mempalace"
 	"gaia/plugins/roles"
 	"gaia/plugins/sanitize"
+	"gaia/plugins/serve"
 	"gaia/plugins/tasks"
 	"gaia/plugins/tools"
 	"gaia/plugins/version"
@@ -51,6 +52,9 @@ func RegisterAll(k *kernel.Kernel) error {
 		return err
 	}
 	if err := k.RegisterPlugin(tasks.NewTasksPlugin()); err != nil {
+		return err
+	}
+	if err := k.RegisterPlugin(serve.NewServePlugin()); err != nil {
 		return err
 	}
 	return nil
