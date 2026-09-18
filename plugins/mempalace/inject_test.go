@@ -11,7 +11,7 @@ import (
 
 func TestParseMemoryItems(t *testing.T) {
 	raw := []byte(`{"results":[{"text":"foo","score":0.9,"wing":"w","room":"r","id":"1"}]}`)
-	items := parseMemoryItems(raw)
+	items, _ := parseMemoryItems(raw)
 	if len(items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(items))
 	}
@@ -22,7 +22,7 @@ func TestParseMemoryItems(t *testing.T) {
 
 func TestParseMemoryItems_FromToolContentEnvelope(t *testing.T) {
 	raw := []byte(`{"content":[{"type":"text","text":"{\"results\":[{\"text\":\"hello from drawer\",\"score\":0.91}]}"}]}`)
-	items := parseMemoryItems(raw)
+	items, _ := parseMemoryItems(raw)
 	if len(items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(items))
 	}

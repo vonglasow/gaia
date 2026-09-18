@@ -22,11 +22,10 @@ type MemoryItem struct {
 }
 
 var callToolFn = CallTool
+var listToolsFn = ListTools
 var timeNow = time.Now
 
-// SearchContextIfEnabled searches MemPalace for a behavioral instruction matching
-// the query, filtered to the configured wing/room. Returns "" on any failure so
-// callers can fall back to roles without interrupting the user.
+// SearchContextIfEnabled returns "" on any failure, so callers fall back to roles.
 func SearchContextIfEnabled(ctx context.Context, query string) (string, error) {
 	if !viper.GetBool("mempalace.context.enabled") {
 		return "", nil
@@ -62,7 +61,7 @@ func SearchContextIfEnabled(ctx context.Context, query string) (string, error) {
 		logEvent("context_search_failed", map[string]interface{}{"error": err.Error()})
 		return "", nil
 	}
-	items := parseMemoryItems(raw)
+	items, _ := parseMemoryItems(raw)
 	if minScore > 0 {
 		filtered := items[:0]
 		for _, item := range items {
@@ -110,7 +109,7 @@ func searchMemories(ctx context.Context, query string, maxResults int, minScore 
 	if err != nil {
 		return nil, nil, err
 	}
-	items := parseMemoryItems(raw)
+	items, _ := parseMemoryItems(raw)
 	if minScore > 0 && len(items) > 0 {
 		filtered := items[:0]
 		for _, item := range items {
@@ -231,7 +230,9 @@ func persistDrawer(ctx context.Context, room, content, query string) error {
 
 func BuildMemoryContext(items []MemoryItem, raw json.RawMessage) string {
 	if len(items) == 0 {
-		if len(raw) == 0 {
+		// An answer understood to hold nothing is an answer. Only an envelope
+		// nobody could read is worth putting in front of a model as it arrived.
+		if _, understood := parseMemoryItems(raw); understood || len(raw) == 0 {
 			return ""
 		}
 		return "Memory Context (raw):\n" + formatRaw(raw)
@@ -427,39 +428,43 @@ func wrapRunes(text string, width int) []string {
 	return lines
 }
 
-func parseMemoryItems(raw json.RawMessage) []MemoryItem {
+// parseMemoryItems reads the shapes a MemPalace answer arrives in, and reports
+// whether it recognised the envelope at all. Those are different failures: an
+// envelope understood to hold nothing is an answer, and one nobody could read
+// is not.
+func parseMemoryItems(raw json.RawMessage) ([]MemoryItem, bool) {
 	raw = unwrapToolContentJSON(raw)
 	if len(raw) == 0 {
-		return nil
+		return nil, false
 	}
 	var rootArray []json.RawMessage
 	if err := json.Unmarshal(raw, &rootArray); err == nil {
-		return parseItemsRawArray(rootArray)
+		return parseItemsRawArray(rootArray), true
 	}
 
 	var rootObj map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &rootObj); err != nil {
-		return nil
+		return nil, false
 	}
 	for _, key := range []string{"results", "matches", "items", "hits", "memories"} {
 		if payload, ok := rootObj[key]; ok {
 			var arr []json.RawMessage
 			if err := json.Unmarshal(payload, &arr); err == nil {
-				return parseItemsRawArray(arr)
+				return parseItemsRawArray(arr), true
 			}
 		}
 	}
 	if payload, ok := rootObj["result"]; ok {
 		var arr []json.RawMessage
 		if err := json.Unmarshal(payload, &arr); err == nil {
-			return parseItemsRawArray(arr)
+			return parseItemsRawArray(arr), true
 		}
 		var single map[string]interface{}
 		if err := json.Unmarshal(payload, &single); err == nil {
-			return []MemoryItem{parseItemMap(single)}
+			return []MemoryItem{parseItemMap(single)}, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func unwrapToolContentJSON(raw json.RawMessage) json.RawMessage {
