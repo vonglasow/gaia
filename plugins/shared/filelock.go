@@ -17,8 +17,7 @@ const (
 
 const retryInterval = 25 * time.Millisecond
 
-// With acquires a lock on lockPath, executes fn, then releases the lock.
-// If timeout is <= 0, it attempts lock acquisition only once.
+// With holds a lock on lockPath around fn; a timeout of zero tries once.
 func With(lockPath string, mode Mode, timeout time.Duration, fn func() error) error {
 	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {

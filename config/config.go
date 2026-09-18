@@ -1,3 +1,4 @@
+// Package config loads gaia's settings, validates them, and records repository trust.
 package config
 
 import (
@@ -16,16 +17,19 @@ import (
 var CfgFile string
 
 var kernelKeys = map[string]bool{
-	"config.validation": true,
-	"debug":             true,
-	"cache.refresh":     true,
-	"provider":          true,
-	"host":              true,
-	"port":              true,
-	"model":             true,
-	"timeout_seconds":   true,
-	"plugins.enabled":   true,
-	"plugins.disabled":  true,
+	"config.validation":  true,
+	"debug":              true,
+	"cache.refresh":      true,
+	"provider":           true,
+	"host":               true,
+	"port":               true,
+	"model":              true,
+	"timeout_seconds":    true,
+	"ollama.keep_alive":  true,
+	"ollama.num_ctx":     true,
+	"ollama.max_num_ctx": true,
+	"plugins.enabled":    true,
+	"plugins.disabled":   true,
 }
 
 var (
@@ -33,8 +37,7 @@ var (
 	pluginPrefixKeys = map[string][]string{}
 )
 
-// RegisterPluginSchema registers config keys for a plugin.
-// Keys must be prefixed with "<plugin>." and may end with ".*" to allow any nested keys.
+// RegisterPluginSchema takes "<plugin>."-prefixed keys, ".*" allowing nested ones.
 func RegisterPluginSchema(pluginID string, keys []string) error {
 	if pluginID == "" {
 		return fmt.Errorf("plugin id is required for schema registration")
@@ -85,7 +88,7 @@ func IsValidKey(key string) bool {
 func IsListKey(key string) bool {
 	switch key {
 	case "plugins.enabled", "plugins.disabled",
-		"tools.allow", "tools.allow_patterns", "tools.deny", "tools.deny_patterns",
+		"agent.allowlist", "agent.denylist",
 		"investigate.allowlist", "investigate.denylist":
 		return true
 	default:
@@ -165,9 +168,7 @@ func InitConfig() error {
 	return nil
 }
 
-// SetConfigString sets a config key. For list keys (e.g. plugins.enabled, plugins.disabled),
-// value must be a JSON array of strings, e.g. `["a","b"]`.
-// For scalar keys, value is stored as-is.
+// SetConfigString stores a scalar as-is; a list key takes a JSON array of strings.
 func SetConfigString(key, value string) error {
 	if !IsValidKey(key) {
 		return fmt.Errorf("invalid config key %q", key)
@@ -212,8 +213,7 @@ func SetConfigString(key, value string) error {
 	return nil
 }
 
-// ValidationMode returns the current config validation mode.
-// Allowed values: "strict", "warn", "off".
+// ValidationMode is "strict", "warn" or "off".
 func ValidationMode() string {
 	mode := strings.ToLower(strings.TrimSpace(viper.GetString("config.validation")))
 	switch mode {
@@ -269,7 +269,7 @@ func KeysFromFile(path string) ([]string, error) {
 	return FlattenKeys(settings), nil
 }
 
-// PluginConfigKeys loads and flattens keys from a plugin config file, returning namespaced keys.
+// PluginConfigKeys flattens a plugin config file into namespaced keys.
 func PluginConfigKeys(pluginID string) ([]string, error) {
 	path := pluginConfigPath(pluginID)
 	keys, err := KeysFromFile(path)
@@ -385,4 +385,22 @@ func setNestedValue(target map[string]any, path []string, value any) {
 		target[path[0]] = next
 	}
 	setNestedValue(next, path[1:], value)
+}
+
+// StringList tolerates both shapes viper returns: []string and []interface{}.
+func StringList(key string) []string {
+	switch v := viper.Get(key).(type) {
+	case []string:
+		return v
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }

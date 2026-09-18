@@ -61,8 +61,7 @@ func (m *streamAnswerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.gotStreamDone = true
 		m.streamFinal = msg.final
 		m.streamErr = msg.err
-		// Finalize model content before quitting so the last frame is complete.
-		// Prefer the authoritative final payload when provided.
+		// Finalise before quitting, preferring the authoritative payload.
 		if msg.err == nil {
 			final := strings.TrimRight(msg.final, "\n")
 			if strings.TrimSpace(final) == "" {
@@ -97,8 +96,7 @@ func (m *streamAnswerModel) View() string {
 	}
 	rendered := renderFixedWidthBox(m.title, wrapped, m.width)
 	if m.gotStreamDone {
-		// Keep cursor on a line below the border so Bubble Tea exit cleanup
-		// clears that line, not the bottom border itself.
+		// A line below the border, so exit cleanup clears it and not the border.
 		return rendered + "\n"
 	}
 	return rendered
@@ -117,8 +115,7 @@ var detectTTY = writerIsTTY
 
 func writerTerminalWidth(w io.Writer) (int, bool) {
 	_ = w
-	// Bubble Tea's WindowSizeMsg is the source of truth for dynamic sizing.
-	// COLUMNS is only used as an optional initial hint before the first resize event.
+	// COLUMNS is only a hint before the first WindowSizeMsg, which is the truth.
 	columns := strings.TrimSpace(os.Getenv("COLUMNS"))
 	if columns == "" {
 		return 0, false
@@ -172,12 +169,7 @@ func renderFixedWidthBox(title, body string, width int) string {
 	return strings.Join(framed, "\n")
 }
 
-// DisplayStreamedAnswer runs runStream, which must call send with each non-empty chunk of output.
-// It returns the final answer string and any error from runStream.
-//
-// On a TTY, Bubble Tea is the single renderer and writes in normal terminal flow (no alt-screen).
-// After exit we print exactly one newline so the shell prompt does not overwrite the bottom border.
-// On a non-TTY, send is implemented as PrintRaw.
+// DisplayStreamedAnswer renders each chunk send receives, through Bubble Tea on a TTY.
 func DisplayStreamedAnswer(ctx context.Context, w io.Writer, title string, runStream func(send func(string)) (final string, err error)) (string, error) {
 	if !detectTTY(w) {
 		var streamed strings.Builder

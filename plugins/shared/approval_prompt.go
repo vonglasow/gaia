@@ -1,3 +1,4 @@
+// Package shared holds what every plugin may use: output, prompts, locks, paths.
 package shared
 
 import (
