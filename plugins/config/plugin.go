@@ -1,4 +1,5 @@
-package configplugin
+// Package config exposes the config commands.
+package config
 
 import (
 	"encoding/json"
@@ -6,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"gaia/config"
+	gaiaconfig "gaia/config"
 	"gaia/kernel"
 	"gaia/plugins/shared"
 
@@ -14,20 +15,19 @@ import (
 	"github.com/spf13/viper"
 )
 
-type ConfigPlugin struct{}
+type ConfigPlugin struct {
+	kernel.BasePlugin
+}
 
 func NewConfigPlugin() *ConfigPlugin { return &ConfigPlugin{} }
 
 func (p *ConfigPlugin) ID() string           { return "config" }
 func (p *ConfigPlugin) DefaultEnabled() bool { return true }
-func (p *ConfigPlugin) DependsOn() []string  { return nil }
 func (p *ConfigPlugin) ConfigSchema() []string {
 	return nil
 }
 
-func (p *ConfigPlugin) MCPTools() []kernel.MCPTool { return nil }
-
-func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
+func (p *ConfigPlugin) Register(_ *kernel.Kernel) ([]*cobra.Command, error) {
 	configCmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage configuration",
@@ -38,9 +38,9 @@ func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List configuration keys and values",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			short, _ := cmd.Flags().GetBool("short")
-			keys := config.FlattenKeys(viper.AllSettings())
+			keys := gaiaconfig.FlattenKeys(viper.AllSettings())
 			sort.Strings(keys)
 			var b strings.Builder
 			for _, key := range keys {
@@ -49,7 +49,7 @@ func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 				if short && len(valStr) > listMaxValueLen {
 					valStr = valStr[:listMaxValueLen] + "..."
 				}
-				b.WriteString(fmt.Sprintf("%s: %s\n", key, valStr))
+				fmt.Fprintf(&b, "%s: %s\n", key, valStr)
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "Config", strings.TrimRight(b.String(), "\n"))
 		},
@@ -63,9 +63,9 @@ func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := args[0]
 			if !viper.IsSet(key) {
-				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Config key %q is not set", key))
+				return shared.Fail(cmd.ErrOrStderr(), fmt.Sprintf("Config key %q is not set", key))
 			}
-			if config.IsListKey(key) {
+			if gaiaconfig.IsListKey(key) {
 				val := viper.GetStringSlice(key)
 				raw, err := json.Marshal(val)
 				if err != nil {
@@ -82,7 +82,7 @@ func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		Short: "Set a configuration value",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := config.SetConfigString(args[0], args[1]); err != nil {
+			if err := gaiaconfig.SetConfigString(args[0], args[1]); err != nil {
 				return err
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "Config", fmt.Sprintf("Updated %s", args[0]))
@@ -92,24 +92,24 @@ func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	createCmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create the default configuration file if it does not exist",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := config.InitConfig(); err != nil {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := gaiaconfig.InitConfig(); err != nil {
 				return fmt.Errorf("failed to initialize config: %w", err)
 			}
-			return shared.PrintBox(cmd.OutOrStdout(), "Config", fmt.Sprintf("Configuration file ensured at: %s", config.CfgFile))
+			return shared.PrintBox(cmd.OutOrStdout(), "Config", fmt.Sprintf("Configuration file ensured at: %s", gaiaconfig.CfgFile))
 		},
 	}
 
 	pathCmd := &cobra.Command{
 		Use:   "path",
 		Short: "Show the configuration file path in use",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if config.CfgFile == "" {
-				if err := config.InitConfig(); err != nil {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if gaiaconfig.CfgFile == "" {
+				if err := gaiaconfig.InitConfig(); err != nil {
 					return err
 				}
 			}
-			return shared.PrintBox(cmd.OutOrStdout(), "Config", config.CfgFile)
+			return shared.PrintBox(cmd.OutOrStdout(), "Config", gaiaconfig.CfgFile)
 		},
 	}
 
@@ -122,11 +122,11 @@ func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			if len(args) == 1 {
 				target = args[0]
 			}
-			repoRoot, err := config.ResolveRepositoryRootFromPath(target)
+			repoRoot, err := gaiaconfig.ResolveRepositoryRootFromPath(target)
 			if err != nil {
 				return fmt.Errorf("resolve repository root from %q: %w", target, err)
 			}
-			if err := config.TrustRepository(repoRoot); err != nil {
+			if err := gaiaconfig.TrustRepository(repoRoot); err != nil {
 				return fmt.Errorf("trust repository %q: %w", repoRoot, err)
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "Config",
@@ -140,11 +140,11 @@ func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
-				repoRoot, err := config.ResolveRepositoryRootFromPath(args[0])
+				repoRoot, err := gaiaconfig.ResolveRepositoryRootFromPath(args[0])
 				if err != nil {
 					return fmt.Errorf("resolve repository root from %q: %w", args[0], err)
 				}
-				trusted, err := config.IsRepositoryTrusted(repoRoot)
+				trusted, err := gaiaconfig.IsRepositoryTrusted(repoRoot)
 				if err != nil {
 					return fmt.Errorf("read trust status for %q: %w", repoRoot, err)
 				}
@@ -154,7 +154,7 @@ func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 				}
 				return shared.PrintBox(cmd.OutOrStdout(), "Config", fmt.Sprintf("Trusted: %s (%s)", status, repoRoot))
 			}
-			trustedRepos, err := config.ListTrustedRepositories()
+			trustedRepos, err := gaiaconfig.ListTrustedRepositories()
 			if err != nil {
 				return fmt.Errorf("list trusted repositories: %w", err)
 			}
@@ -174,11 +174,11 @@ func (p *ConfigPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			if len(args) == 1 {
 				target = args[0]
 			}
-			repoRoot, err := config.ResolveRepositoryRootFromPath(target)
+			repoRoot, err := gaiaconfig.ResolveRepositoryRootFromPath(target)
 			if err != nil {
 				return fmt.Errorf("resolve repository root from %q: %w", target, err)
 			}
-			if err := config.UntrustRepository(repoRoot); err != nil {
+			if err := gaiaconfig.UntrustRepository(repoRoot); err != nil {
 				return fmt.Errorf("untrust repository %q: %w", repoRoot, err)
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "Config", fmt.Sprintf("Removed trust for repository: %s", repoRoot))

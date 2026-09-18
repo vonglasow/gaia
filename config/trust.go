@@ -90,7 +90,7 @@ func mergeLocalConfig(localConfigPath string) error {
 	return viper.MergeConfigMap(local.AllSettings())
 }
 
-// IsRepositoryTrusted returns whether the repository root is trusted for local .gaia.yaml overrides.
+// IsRepositoryTrusted says whether a root may carry local .gaia.yaml overrides.
 func IsRepositoryTrusted(repoRoot string) (bool, error) {
 	normalized, err := shared.Normalize(repoRoot)
 	if err != nil {
@@ -170,9 +170,7 @@ func ListTrustedRepositories() ([]string, error) {
 	return trusted, nil
 }
 
-// ResolveRepositoryRootFromPath resolves a repository root for trust operations.
-// If path is inside a git repository, it returns the git root.
-// Otherwise, it returns the normalized absolute directory path.
+// ResolveRepositoryRootFromPath returns the git root, else the normalised directory.
 func ResolveRepositoryRootFromPath(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		path = "."

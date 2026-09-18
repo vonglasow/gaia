@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,7 +31,7 @@ func TestWith_ReturnsFunctionError(t *testing.T) {
 	err := With(lockPath, Exclusive, 0, func() error {
 		return wantErr
 	})
-	if err != wantErr {
+	if !errors.Is(err, wantErr) {
 		t.Errorf("With returned %v, want %v", err, wantErr)
 	}
 }

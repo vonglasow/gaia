@@ -7,8 +7,7 @@ import (
 	"path/filepath"
 )
 
-// Normalize resolves to an absolute, cleaned path and resolves symlinks when possible.
-// If the path does not exist yet, it still returns a clean absolute path.
+// Normalize returns a clean absolute path, resolving symlinks where it can.
 func Normalize(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {

@@ -76,8 +76,7 @@ func EstimateTokens(s string) int {
 	return t
 }
 
-// Sanitize runs the sanitization pipeline on the request and returns updated request and stats.
-// It respects MaxDurationMillis by doing work in small steps (best-effort).
+// Sanitize rewrites the request, respecting MaxDurationMillis best-effort.
 func Sanitize(req Request, opts Options) (Request, Stats, error) {
 	start := time.Now()
 	stats := Stats{}
@@ -200,8 +199,7 @@ func aggressiveFilter(line string) bool {
 	return false
 }
 
-// applyTokenCap reduces message contents so total tokens <= maxTokens.
-// Preserves system (index 0) and last user message; trims or drops older history.
+// applyTokenCap trims history to fit, keeping the system prompt and last user turn.
 func applyTokenCap(msgs []Message, maxTokens int, lastUserIdx int) []Message {
 	total := 0
 	for _, m := range msgs {
@@ -233,10 +231,14 @@ func applyTokenCap(msgs []Message, maxTokens int, lastUserIdx int) []Message {
 			newLen := newTok * 4
 			runes := []rune(out[i].Content)
 			if len(runes) > newLen {
-				out[i].Content = string(runes[:newLen]) + "…"
-				total = total - tok + EstimateTokens(out[i].Content)
-				reduced = true
-				break
+				// Progress only if it really got cheaper, or the loop never ends.
+				truncated := string(runes[:newLen]) + "…"
+				if newTokens := EstimateTokens(truncated); newTokens < tok {
+					out[i].Content = truncated
+					total = total - tok + newTokens
+					reduced = true
+					break
+				}
 			}
 		}
 		if !reduced {

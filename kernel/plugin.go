@@ -21,7 +21,16 @@ type Plugin interface {
 	DependsOn() []string
 	ConfigSchema() []string
 	Register(k *Kernel) ([]*cobra.Command, error)
-	// MCPTools returns the list of tools this plugin exposes via the MCP server.
-	// Return nil if the plugin has no MCP tools.
+	// MCPTools is what this plugin exposes over MCP, or nil.
 	MCPTools() []MCPTool
 }
+
+// BasePlugin answers what most plugins answer the same way. Embed it and state
+// only what is actually true of yours.
+type BasePlugin struct{}
+
+// DependsOn: no plugin needs another to be enabled first.
+func (BasePlugin) DependsOn() []string { return nil }
+
+// MCPTools: a plugin offers nothing over MCP until it says otherwise.
+func (BasePlugin) MCPTools() []MCPTool { return nil }

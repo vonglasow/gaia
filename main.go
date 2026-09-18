@@ -1,3 +1,4 @@
+// Command gaia is a CLI for working with local models.
 package main
 
 import (
@@ -6,6 +7,7 @@ import (
 
 	"gaia/kernel"
 	"gaia/plugins"
+	"gaia/plugins/shared"
 )
 
 func main() {
@@ -15,7 +17,10 @@ func main() {
 		os.Exit(1)
 	}
 	if err := k.Execute(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		// ErrReported was already shown; printing it again would add a bare "reported".
+		if !shared.WasReported(err) {
+			fmt.Fprintln(os.Stderr, err)
+		}
 		os.Exit(1)
 	}
 }

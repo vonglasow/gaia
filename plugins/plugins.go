@@ -1,3 +1,4 @@
+// Package plugins registers every built-in plugin with the kernel.
 package plugins
 
 import (
@@ -13,18 +14,17 @@ import (
 	"github.com/spf13/viper"
 )
 
-type PluginsPlugin struct{}
+type PluginsPlugin struct {
+	kernel.BasePlugin
+}
 
 func NewPluginsPlugin() *PluginsPlugin { return &PluginsPlugin{} }
 
 func (p *PluginsPlugin) ID() string           { return "plugins" }
 func (p *PluginsPlugin) DefaultEnabled() bool { return true }
-func (p *PluginsPlugin) DependsOn() []string  { return nil }
 func (p *PluginsPlugin) ConfigSchema() []string {
 	return nil
 }
-
-func (p *PluginsPlugin) MCPTools() []kernel.MCPTool { return nil }
 
 func (p *PluginsPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
@@ -35,7 +35,7 @@ func (p *PluginsPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List plugins and status",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			plugins := k.Plugins()
 			enabled := map[string]bool{}
 			for _, p := range k.EnabledPlugins() {
@@ -47,7 +47,7 @@ func (p *PluginsPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 				if enabled[p.ID()] {
 					status = "enabled"
 				}
-				b.WriteString(fmt.Sprintf("%s\t%s\tdefault=%t\n", p.ID(), status, p.DefaultEnabled()))
+				fmt.Fprintf(&b, "%s\t%s\tdefault=%t\n", p.ID(), status, p.DefaultEnabled())
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "Plugins", strings.TrimRight(b.String(), "\n"))
 		},
@@ -60,7 +60,7 @@ func (p *PluginsPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
 			if _, ok := k.Plugin(id); !ok {
-				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Unknown plugin %q", id))
+				return shared.Fail(cmd.ErrOrStderr(), fmt.Sprintf("Unknown plugin %q", id))
 			}
 			enabled := uniqueAppend(viper.GetStringSlice("plugins.enabled"), id)
 			disabled := removeValue(viper.GetStringSlice("plugins.disabled"), id)
@@ -81,7 +81,7 @@ func (p *PluginsPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
 			if _, ok := k.Plugin(id); !ok {
-				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Unknown plugin %q", id))
+				return shared.Fail(cmd.ErrOrStderr(), fmt.Sprintf("Unknown plugin %q", id))
 			}
 			disabled := uniqueAppend(viper.GetStringSlice("plugins.disabled"), id)
 			enabled := removeValue(viper.GetStringSlice("plugins.enabled"), id)

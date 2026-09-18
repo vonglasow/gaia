@@ -32,6 +32,10 @@ func NewKernel() *Kernel {
 	k.RootCmd = &cobra.Command{
 		Use:   "gaia",
 		Short: "Gaia CLI",
+		// Cobra and main both printed the error, so every failure arrived twice.
+		SilenceErrors: true,
+		// Usage on a failed RunE buries the reason; flag errors still print it.
+		SilenceUsage: true,
 	}
 	k.RootCmd.PersistentFlags().StringVarP(&config.CfgFile, "config", "c", "", "Path to an alternative YAML configuration file (or $GAIA_CONFIG)")
 	k.RootCmd.PersistentFlags().Bool("debug", false, "Enable debug output (includes roles debug)")
@@ -40,7 +44,7 @@ func NewKernel() *Kernel {
 	return k
 }
 
-// Execute loads config, resolves plugins, registers commands, and executes the root command.
+// Execute loads config, resolves plugins, registers commands, and runs the root command.
 func (k *Kernel) Execute(args []string) error {
 	if cfg := DetectConfigPath(args); cfg != "" {
 		config.CfgFile = cfg
@@ -143,12 +147,12 @@ func (k *Kernel) ResolveEnabled() error {
 			enabled[id] = p
 		}
 	}
-	for _, id := range configList("plugins.enabled") {
+	for _, id := range config.StringList("plugins.enabled") {
 		if p, ok := k.plugins[id]; ok {
 			enabled[id] = p
 		}
 	}
-	for _, id := range configList("plugins.disabled") {
+	for _, id := range config.StringList("plugins.disabled") {
 		delete(enabled, id)
 	}
 
@@ -181,27 +185,25 @@ func (k *Kernel) RegisterEnabledCommands() error {
 			k.RootCmd.AddCommand(cmd)
 		}
 	}
+	refuseUnknownSubcommands(k.RootCmd)
 	return nil
 }
 
-func configList(key string) []string {
-	val := viper.Get(key)
-	if val == nil {
-		return nil
+// refuseUnknownSubcommands: a group printing its help and exiting 0 looked like success.
+func refuseUnknownSubcommands(cmd *cobra.Command) {
+	for _, child := range cmd.Commands() {
+		refuseUnknownSubcommands(child)
 	}
-	if s, ok := val.([]string); ok {
-		return s
+	if !cmd.HasSubCommands() || cmd.Runnable() {
+		return
 	}
-	if s, ok := val.([]interface{}); ok {
-		out := make([]string, 0, len(s))
-		for _, x := range s {
-			if str, ok := x.(string); ok {
-				out = append(out, str)
-			}
+	cmd.RunE = func(c *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return fmt.Errorf("unknown command %q for %q", args[0], c.CommandPath())
 		}
-		return out
+		// No arguments is someone asking what this group holds.
+		return c.Help()
 	}
-	return nil
 }
 
 // ValidateConfigKeys checks that all config keys are allowed by plugin schemas.

@@ -83,3 +83,41 @@ func TestRegisterPluginSchema_RequiresPrefix(t *testing.T) {
 	err := config.RegisterPluginSchema("ask", []string{"other.key"})
 	require.Error(t, err)
 }
+
+// A list in YAML arrives as []interface{}; set from Go it is []string. Both are
+// the same list, and every caller reading an allowlist depends on that.
+func TestAListIsReadInBothShapesViperCanReturn(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	viper.Set("agent.denylist", []string{"sudo", "rm"})
+	require.Equal(t, []string{"sudo", "rm"}, config.StringList("agent.denylist"))
+
+	viper.Set("agent.allowlist", []interface{}{"git", "ls"})
+	require.Equal(t, []string{"git", "ls"}, config.StringList("agent.allowlist"),
+		"this is the shape a YAML file actually produces")
+}
+
+func TestAListDropsWhatIsNotAString(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("agent.denylist", []interface{}{"sudo", 42, nil, "rm"})
+
+	require.Equal(t, []string{"sudo", "rm"}, config.StringList("agent.denylist"))
+}
+
+func TestASingleStringIsNotAList(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("agent.denylist", "sudo")
+
+	require.Nil(t, config.StringList("agent.denylist"),
+		"guessing that it is one would silently narrow the list to one entry")
+}
+
+func TestAKeyNobodySetIsNotAList(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	require.Nil(t, config.StringList("agent.denylist"))
+}
