@@ -15,9 +15,13 @@ builds:
     ldflags:
       - -extldflags '-static'
       - -s -w
-      - -X gaia/commands.version={{.Version}}
-      - -X gaia/commands.commitSHA={{.FullCommit}}
-      - -X gaia/commands.buildDate={{.Date}}
+      # The stamps live in gaia/plugins/version. They used to be written to
+      # gaia/commands, a package removed when the CLI moved to kernel+plugins —
+      # so every released binary reported "Gaia dev, commit unknown". The
+      # -buildvcs=false above removes the fallback that would have hidden it.
+      - -X gaia/plugins/version.Version={{.Version}}
+      - -X gaia/plugins/version.Commit={{.FullCommit}}
+      - -X gaia/plugins/version.Date={{.Date}}
 brews:
   - &brew_defaults
     name: "gaia"

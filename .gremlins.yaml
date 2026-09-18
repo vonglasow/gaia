@@ -1,0 +1,37 @@
+# gremlins — mutation testing. Coverage says a line ran; this says a test noticed.
+#
+# Run with `make mutation`. It is deliberately not a commit hook: a full pass
+# recompiles the package once per mutant, and this machine has other work to do.
+#
+# A package whose name differs from its directory is invisible here: outside
+# --integration mode gremlins finds the tests to run from the path, runs none,
+# and reports every mutant as surviving. That cost plugins/config a false 10%
+# until it was renamed to match its directory. Keep them the same.
+
+unleash:
+  # The per-mutant timeout is derived from the baseline run, which does not
+  # account for recompiling inside a copy of the module. Measured: at the
+  # default, 42 of 59 mutants in execpolicy timed out and were counted as
+  # neither killed nor lived.
+  timeout-coefficient: 30
+
+  # Thresholds live here and not on the command line: gremlins v0.6 silently
+  # ignores --threshold-efficacy and --threshold-mcover as flags.
+  # Floors, not targets: raise them as packages improve, never lower one to pass.
+  #
+  # Measured across the repository, efficacy / mutant coverage:
+  #   plugins/config     100.0 / 100.0    investigate         96.0 /  92.6
+  #   execpolicy          94.8 /  89.2    kernel              93.9 / 100.0
+  #   ask                 83.8 /  96.0    chat                80.7 / 100.0
+  #   agent               79.8 /  95.1    config              75.8 /  64.6
+  #   roles               75.4 /  74.7    shared              74.1 /  81.1
+  #   mempalace           72.8 /  83.0    shared/sanitize     69.3 / 100.0
+  #
+  # The low one is applyTokenCap, a convergence loop where many mutants are
+  # equivalent — changing `tok <= 10` to `tok < 10` takes a different path to
+  # the same answer, and no honest test kills that.
+  threshold:
+    # Of the mutants it judged, how many died.
+    efficacy: 65
+    # How much of the code it could judge at all.
+    mutant-coverage: 60
