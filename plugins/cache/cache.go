@@ -1,3 +1,4 @@
+// Package cache stores answers on disk so the same question is asked once.
 package cache
 
 import (

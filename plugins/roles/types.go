@@ -10,7 +10,9 @@ type ModelOverride struct {
 
 // Role defines a role loaded from YAML.
 type Role struct {
-	Name         string                      `yaml:"name"`
+	Name string `yaml:"name"`
+	// Enabled is a pointer so an absent key differs from an explicit false.
+	Enabled      *bool                       `yaml:"enabled,omitempty"`
 	Description  string                      `yaml:"description,omitempty"`
 	Priority     int                         `yaml:"priority,omitempty"`
 	Exclusive    bool                        `yaml:"exclusive,omitempty"`
@@ -18,6 +20,11 @@ type Role struct {
 	SystemPrompt string                      `yaml:"system_prompt,omitempty"`
 	Providers    map[string]ProviderOverride `yaml:"providers,omitempty"`
 	Models       map[string]ModelOverride    `yaml:"models,omitempty"`
+}
+
+// IsEnabled reports whether a role should be loaded at all.
+func (r Role) IsEnabled() bool {
+	return r.Enabled == nil || *r.Enabled
 }
 
 // ResolvedRole represents a role with inherited prompts applied.

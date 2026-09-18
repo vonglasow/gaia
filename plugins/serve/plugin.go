@@ -10,11 +10,13 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"gaia/kernel"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -22,18 +24,31 @@ const (
 	defaultPort = "8765"
 )
 
+// resolvePort reads serve.port, which was declared and read by nothing.
+func resolvePort() string {
+	if port := strings.TrimSpace(viper.GetString("serve.port")); port != "" {
+		return port
+	}
+	return defaultPort
+}
+
+// endpoint is built from the port actually in use.
+func endpoint() string {
+	return "http://localhost:" + resolvePort() + "/mcp"
+}
+
 // ServePlugin runs an MCP-over-HTTP daemon exposing all plugin tools.
 type ServePlugin struct {
+	kernel.BasePlugin
+
 	k *kernel.Kernel
 }
 
 func NewServePlugin() *ServePlugin { return &ServePlugin{} }
 
-func (p *ServePlugin) ID() string                 { return "serve" }
-func (p *ServePlugin) DefaultEnabled() bool       { return true }
-func (p *ServePlugin) DependsOn() []string        { return nil }
-func (p *ServePlugin) ConfigSchema() []string     { return []string{"serve.port"} }
-func (p *ServePlugin) MCPTools() []kernel.MCPTool { return nil }
+func (p *ServePlugin) ID() string             { return "serve" }
+func (p *ServePlugin) DefaultEnabled() bool   { return true }
+func (p *ServePlugin) ConfigSchema() []string { return []string{"serve.port"} }
 
 func (p *ServePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	p.k = k
@@ -54,12 +69,16 @@ func (p *ServePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			Short: "Show gaia MCP server daemon status",
 			RunE:  p.runStatus,
 		},
+		&cobra.Command{
+			Use:   "token",
+			Short: "Print the bearer token an MCP client must present",
+			RunE:  p.runToken,
+		},
 	)
 	return []*cobra.Command{root}, nil
 }
 
-// runServe is the entry point. In the parent process it forks the daemon;
-// in the child (GAIA_DAEMON=1) it runs the MCP HTTP server.
+// runServe forks the daemon, or is the daemon when GAIA_DAEMON=1.
 func (p *ServePlugin) runServe(cmd *cobra.Command, _ []string) error {
 	if os.Getenv(daemonEnv) == "1" {
 		return p.runDaemon(cmd.Context())
@@ -122,7 +141,10 @@ func (p *ServePlugin) forkDaemon(cmd *cobra.Command) error {
 	if err := writeStdoutf(cmd, "gaia serve started (pid %d)\n", child.Pid); err != nil {
 		return err
 	}
-	if err := writeStdoutf(cmd, "MCP endpoint: http://localhost:%s/mcp\n", defaultPort); err != nil {
+	if err := writeStdoutf(cmd, "MCP endpoint: %s\n", endpoint()); err != nil {
+		return err
+	}
+	if err := writeStdoutf(cmd, "Token: %s\n", tokenPath()); err != nil {
 		return err
 	}
 	if err := writeStdoutf(cmd, "Log: %s\n", logPath()); err != nil {
@@ -131,14 +153,15 @@ func (p *ServePlugin) forkDaemon(cmd *cobra.Command) error {
 	return nil
 }
 
-// runDaemon is the long-running server process.
-func (p *ServePlugin) runDaemon(ctx context.Context) error {
+// mcpHandler is split from runDaemon so tests need not bind the real port.
+func (p *ServePlugin) mcpHandler() (http.Handler, error) {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "gaia",
 		Version: "1.0.0",
 	}, nil)
 
-	for _, plugin := range p.k.Plugins() {
+	// EnabledPlugins: a disabled plugin kept answering over MCP before this.
+	for _, plugin := range p.k.EnabledPlugins() {
 		for _, tool := range plugin.MCPTools() {
 			t := tool // capture loop variable
 			server.AddTool(&mcp.Tool{
@@ -148,7 +171,12 @@ func (p *ServePlugin) runDaemon(ctx context.Context) error {
 			}, func(toolCtx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				var args map[string]interface{}
 				if len(req.Params.Arguments) > 0 {
-					_ = json.Unmarshal(req.Params.Arguments, &args)
+					// Reported: the handler used to run with none of them.
+					if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+						r := &mcp.CallToolResult{}
+						r.SetError(fmt.Errorf("decode arguments for %s: %w", t.Name, err))
+						return r, nil
+					}
 				}
 				text, err := t.Handler(toolCtx, args)
 				if err != nil {
@@ -163,16 +191,31 @@ func (p *ServePlugin) runDaemon(ctx context.Context) error {
 		}
 	}
 
-	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+	streamable := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server
 	}, nil)
 
+	token, err := ensureToken(tokenPath())
+	if err != nil {
+		return nil, err
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", handler)
+	mux.Handle("/mcp", guard(token, streamable))
+	return mux, nil
+}
+
+// runDaemon is the long-running server process.
+func (p *ServePlugin) runDaemon(ctx context.Context) error {
+	handler, err := p.mcpHandler()
+	if err != nil {
+		return err
+	}
 
 	srv := &http.Server{
-		Addr:    "localhost:" + defaultPort,
-		Handler: mux,
+		Addr:              "localhost:" + resolvePort(),
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	go func() {
@@ -212,6 +255,15 @@ func (p *ServePlugin) runStop(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+// runToken prints the token, generating one if the daemon has never run.
+func (p *ServePlugin) runToken(cmd *cobra.Command, _ []string) error {
+	token, err := ensureToken(tokenPath())
+	if err != nil {
+		return err
+	}
+	return writeStdoutln(cmd, token)
+}
+
 func (p *ServePlugin) runStatus(cmd *cobra.Command, _ []string) error {
 	pid, err := readPID(pidPath())
 	if err != nil {
@@ -224,7 +276,7 @@ func (p *ServePlugin) runStatus(cmd *cobra.Command, _ []string) error {
 		if err := writeStdoutf(cmd, "gaia serve: running (pid %d)\n", pid); err != nil {
 			return err
 		}
-		if err := writeStdoutf(cmd, "MCP endpoint: http://localhost:%s/mcp\n", defaultPort); err != nil {
+		if err := writeStdoutf(cmd, "MCP endpoint: %s\n", endpoint()); err != nil {
 			return err
 		}
 	} else {

@@ -13,13 +13,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-type RolesPlugin struct{}
+type RolesPlugin struct {
+	kernel.BasePlugin
+}
 
 func NewRolesPlugin() *RolesPlugin { return &RolesPlugin{} }
 
 func (p *RolesPlugin) ID() string           { return "roles" }
 func (p *RolesPlugin) DefaultEnabled() bool { return true }
-func (p *RolesPlugin) DependsOn() []string  { return nil }
 func (p *RolesPlugin) ConfigSchema() []string {
 	return []string{
 		"roles.directory",
@@ -32,9 +33,7 @@ func (p *RolesPlugin) ConfigSchema() []string {
 	}
 }
 
-func (p *RolesPlugin) MCPTools() []kernel.MCPTool { return nil }
-
-func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
+func (p *RolesPlugin) Register(_ *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:   "roles",
 		Short: "Manage roles",
@@ -43,10 +42,10 @@ func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List available roles",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			roles, err := LoadRolesWithDefaults()
 			if err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
 			if len(roles) == 0 {
 				return shared.PrintBox(cmd.OutOrStdout(), "Roles", "No roles found")
@@ -67,19 +66,19 @@ func (p *RolesPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rolesList, err := LoadRolesWithDefaults()
 			if err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
 			if len(rolesList) == 0 {
-				return shared.PrintError(cmd.ErrOrStderr(), "No roles found")
+				return shared.Fail(cmd.ErrOrStderr(), "No roles found")
 			}
 			resolved, err := ResolveInheritance(rolesList)
 			if err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
 			name := args[0]
 			role, ok := resolved[name]
 			if !ok {
-				return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Role %q not found", name))
+				return shared.Fail(cmd.ErrOrStderr(), fmt.Sprintf("Role %q not found", name))
 			}
 			body := fmt.Sprintf("Name: %s\nPriority: %d\nExclusive: %v\n\n%s",
 				role.Name, role.Priority, role.Exclusive, role.SystemPrompt)

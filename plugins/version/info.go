@@ -1,3 +1,4 @@
+// Package version reports which build is installed.
 package version
 
 import (

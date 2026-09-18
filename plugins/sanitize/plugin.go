@@ -1,3 +1,4 @@
+// Package sanitize exposes the noise-removal settings as a plugin.
 package sanitize
 
 import (
@@ -7,13 +8,14 @@ import (
 )
 
 // Sanitizer plugin registers config keys for sanitization. It exposes no commands.
-type SanitizerPlugin struct{}
+type SanitizerPlugin struct {
+	kernel.BasePlugin
+}
 
 func NewSanitizerPlugin() *SanitizerPlugin { return &SanitizerPlugin{} }
 
 func (p *SanitizerPlugin) ID() string           { return "sanitize" }
 func (p *SanitizerPlugin) DefaultEnabled() bool { return true }
-func (p *SanitizerPlugin) DependsOn() []string  { return nil }
 func (p *SanitizerPlugin) ConfigSchema() []string {
 	return []string{
 		"sanitize.enabled",
@@ -23,8 +25,6 @@ func (p *SanitizerPlugin) ConfigSchema() []string {
 	}
 }
 
-func (p *SanitizerPlugin) MCPTools() []kernel.MCPTool { return nil }
-
-func (p *SanitizerPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
+func (p *SanitizerPlugin) Register(_ *kernel.Kernel) ([]*cobra.Command, error) {
 	return []*cobra.Command{}, nil
 }

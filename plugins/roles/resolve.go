@@ -2,7 +2,7 @@ package roles
 
 import "strings"
 
-// ResolveSystemPrompt returns the best system prompt for a role, considering model/provider overrides.
+// ResolveSystemPrompt picks a role's prompt, honouring model and provider overrides.
 func ResolveSystemPrompt(role ResolvedRole, provider, model string) string {
 	model = strings.TrimSpace(model)
 	provider = strings.TrimSpace(provider)

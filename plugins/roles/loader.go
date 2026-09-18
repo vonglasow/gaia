@@ -53,16 +53,35 @@ func LoadRoles(dir string) ([]Role, error) {
 		if role.Name == "" {
 			role.Name = strings.TrimSuffix(strings.TrimSuffix(name, ".yaml"), ".yml")
 		}
+		// Before validation: a role switched off cannot fail a check either.
+		if !role.IsEnabled() {
+			continue
+		}
 		if err := validateRole(role, path); err != nil {
 			return nil, err
 		}
 		roles = append(roles, role)
 	}
 
+	if err := rejectDuplicateNames(roles); err != nil {
+		return nil, err
+	}
 	sort.Slice(roles, func(i, j int) bool {
 		return roles[i].Name < roles[j].Name
 	})
 	return roles, nil
+}
+
+// rejectDuplicateNames: which one won would otherwise depend on directory order.
+func rejectDuplicateNames(roles []Role) error {
+	seen := make(map[string]bool, len(roles))
+	for _, role := range roles {
+		if seen[role.Name] {
+			return fmt.Errorf("role %s is defined twice; names must be unique within a directory", role.Name)
+		}
+		seen[role.Name] = true
+	}
+	return nil
 }
 
 func validateRole(role Role, path string) error {
@@ -116,10 +135,16 @@ func LoadRolesFromFS(fsys fs.FS, dir string) ([]Role, error) {
 		if role.Name == "" {
 			role.Name = strings.TrimSuffix(strings.TrimSuffix(name, ".yaml"), ".yml")
 		}
+		if !role.IsEnabled() {
+			continue
+		}
 		if err := validateRole(role, path); err != nil {
 			return nil, err
 		}
 		roles = append(roles, role)
+	}
+	if err := rejectDuplicateNames(roles); err != nil {
+		return nil, err
 	}
 	sort.Slice(roles, func(i, j int) bool {
 		return roles[i].Name < roles[j].Name
