@@ -1,3 +1,4 @@
+// Package mempalace talks to the MemPalace memory over MCP.
 package mempalace
 
 import (

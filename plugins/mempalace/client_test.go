@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
 func TestManager_StatusAndSearch(t *testing.T) {
@@ -189,4 +191,99 @@ func incrementStartsCounter() {
 		}
 	}
 	_ = os.WriteFile(p, []byte(strconv.Itoa(current+1)), 0o600)
+}
+
+// Listing tools goes over the same connection as calling one, which is what
+// `gaia mem tools` is for: finding out what a server actually offers.
+func TestManager_ListToolsNamesWhatTheServerOffers(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_MCP") == "1" {
+		helperMCPServer()
+		return
+	}
+
+	t.Setenv("GO_WANT_HELPER_MCP", "1")
+	t.Setenv("GO_WANT_HELPER_MCP_MODE", "ok")
+	t.Setenv("GO_WANT_HELPER_MCP_STARTS_FILE", filepath.Join(t.TempDir(), "starts.txt"))
+	m := NewManager(Config{
+		Command: os.Args[0],
+		Args:    []string{"-test.run=TestManager_ListToolsNamesWhatTheServerOffers"},
+		Timeout: 2 * time.Second,
+	})
+	defer func() { _ = m.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	tools, err := m.ListTools(ctx)
+	if err != nil {
+		t.Fatalf("list tools failed: %v", err)
+	}
+	if !strings.Contains(string(tools), "mempalace_search") {
+		t.Fatalf("unexpected tools payload: %s", string(tools))
+	}
+}
+
+// A tool with no name would be sent as an empty call and answered by an error
+// from the far end; it is refused here instead.
+func TestManager_AToolWithNoNameIsRefusedBeforeAnythingIsSent(t *testing.T) {
+	m := NewManager(Config{Command: "false", Timeout: time.Second})
+	defer func() { _ = m.Close() }()
+
+	_, err := m.CallTool(context.Background(), "   ", nil)
+
+	if err == nil || !strings.Contains(err.Error(), "tool name is required") {
+		t.Fatalf("expected a refusal, got %v", err)
+	}
+}
+
+// The manager is shared, and rebuilt when the configuration it was built from
+// changes — otherwise a changed palace_path would go to the old process.
+func TestTheManagerIsRebuiltWhenTheConfigurationChanges(t *testing.T) {
+	first := configSignature(Config{Command: "python", Args: []string{"-m", "x"}, PalacePath: "/one"})
+	same := configSignature(Config{Command: "python", Args: []string{"-m", "x"}, PalacePath: "/one"})
+	other := configSignature(Config{Command: "python", Args: []string{"-m", "x"}, PalacePath: "/two"})
+
+	if first != same {
+		t.Fatalf("the same configuration gave two signatures")
+	}
+	if first == other {
+		t.Fatalf("a different palace gave the same signature")
+	}
+}
+
+func TestTheServerCommandDefaultsToTheOneMemPalaceInstalls(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("HOME", "/home/somebody")
+
+	cfg := managerConfigFromViper()
+
+	if cfg.Command != "/home/somebody/.local/pipx/venvs/mempalace/bin/python" {
+		t.Fatalf("unexpected command: %s", cfg.Command)
+	}
+	if strings.Join(cfg.Args, " ") != "-m mempalace.mcp_server" {
+		t.Fatalf("unexpected args: %v", cfg.Args)
+	}
+	if cfg.Timeout != 30*time.Second {
+		t.Fatalf("unexpected timeout: %s", cfg.Timeout)
+	}
+}
+
+func TestWhatIsConfiguredWinsOverTheDefaults(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("mempalace.mcp.command", "/usr/bin/python3")
+	viper.Set("mempalace.mcp.args", []string{"-m", "elsewhere"})
+	viper.Set("mempalace.mcp.timeout_seconds", 5)
+	viper.Set("mempalace.palace_path", "/palace")
+	viper.Set("mempalace.debug", true)
+
+	cfg := managerConfigFromViper()
+
+	if cfg.Command != "/usr/bin/python3" || cfg.PalacePath != "/palace" {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+	if cfg.Timeout != 5*time.Second || !cfg.Verbose {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
 }

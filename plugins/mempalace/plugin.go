@@ -20,13 +20,14 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type MemPalacePlugin struct{}
+type MemPalacePlugin struct {
+	kernel.BasePlugin
+}
 
 func NewMemPalacePlugin() *MemPalacePlugin { return &MemPalacePlugin{} }
 
 func (p *MemPalacePlugin) ID() string           { return "mempalace" }
 func (p *MemPalacePlugin) DefaultEnabled() bool { return true }
-func (p *MemPalacePlugin) DependsOn() []string  { return nil }
 
 func (p *MemPalacePlugin) ConfigSchema() []string {
 	return []string{
@@ -47,9 +48,7 @@ func (p *MemPalacePlugin) ConfigSchema() []string {
 	}
 }
 
-func (p *MemPalacePlugin) MCPTools() []kernel.MCPTool { return nil }
-
-func (p *MemPalacePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
+func (p *MemPalacePlugin) Register(_ *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:   "mem",
 		Short: "MemPalace MCP tools",
@@ -60,10 +59,10 @@ func (p *MemPalacePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	statusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show MemPalace status",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			raw, err := CallTool(cmd.Context(), "mempalace_status", nil)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			raw, err := callToolFn(cmd.Context(), "mempalace_status", nil)
 			if err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "MemPalace", formatStatus(raw))
 		},
@@ -72,10 +71,10 @@ func (p *MemPalacePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	toolsCmd := &cobra.Command{
 		Use:   "tools",
 		Short: "List discovered MCP tools",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			raw, err := ListTools(cmd.Context())
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			raw, err := listToolsFn(cmd.Context())
 			if err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "MemPalace Tools", formatRaw(raw))
 		},
@@ -90,12 +89,12 @@ func (p *MemPalacePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			var callArgs map[string]interface{}
 			if len(args) == 2 && strings.TrimSpace(args[1]) != "" {
 				if err := json.Unmarshal([]byte(args[1]), &callArgs); err != nil {
-					return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("invalid json args: %v", err))
+					return shared.Fail(cmd.ErrOrStderr(), fmt.Sprintf("invalid json args: %v", err))
 				}
 			}
-			raw, err := CallTool(cmd.Context(), tool, callArgs)
+			raw, err := callToolFn(cmd.Context(), tool, callArgs)
 			if err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "MemPalace", formatRaw(raw))
 		},
@@ -108,12 +107,12 @@ func (p *MemPalacePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.TrimSpace(args[0])
 			if query == "" {
-				return shared.PrintError(cmd.ErrOrStderr(), "query is required")
+				return shared.Fail(cmd.ErrOrStderr(), "query is required")
 			}
 			maxResults, minScore := resolveInjectLimits(cmd)
 			items, raw, err := searchMemories(cmd.Context(), query, maxResults, minScore)
 			if err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
 			if len(items) == 0 {
 				return shared.PrintBox(cmd.OutOrStdout(), "MemPalace", "No results")
@@ -130,12 +129,12 @@ func (p *MemPalacePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.TrimSpace(args[0])
 			if query == "" {
-				return shared.PrintError(cmd.ErrOrStderr(), "query is required")
+				return shared.Fail(cmd.ErrOrStderr(), "query is required")
 			}
 			maxResults, minScore := resolveInjectLimits(cmd)
 			items, raw, err := searchMemories(cmd.Context(), query, maxResults, minScore)
 			if err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
 			contextBlock := BuildMemoryContext(items, raw)
 			if contextBlock == "" {
