@@ -1,7 +1,9 @@
+// Package chat holds a conversation with a model, one turn at a time.
 package chat
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -9,9 +11,7 @@ import (
 
 	"gaia/kernel"
 	"gaia/plugins/ask"
-	"gaia/plugins/cache"
 	"gaia/plugins/mempalace"
-	"gaia/plugins/roles"
 	"gaia/plugins/shared"
 
 	"github.com/spf13/cobra"
@@ -19,6 +19,8 @@ import (
 )
 
 type ChatPlugin struct {
+	kernel.BasePlugin
+
 	providers map[string]ask.Provider
 }
 
@@ -33,8 +35,7 @@ func NewChatPlugin() *ChatPlugin {
 }
 
 func (p *ChatPlugin) ID() string           { return "chat" }
-func (p *ChatPlugin) DefaultEnabled() bool { return false }
-func (p *ChatPlugin) DependsOn() []string  { return nil }
+func (p *ChatPlugin) DefaultEnabled() bool { return true }
 func (p *ChatPlugin) ConfigSchema() []string {
 	return []string{
 		"chat.provider",
@@ -46,8 +47,6 @@ func (p *ChatPlugin) ConfigSchema() []string {
 	}
 }
 
-func (p *ChatPlugin) MCPTools() []kernel.MCPTool { return nil }
-
 func (p *ChatPlugin) RegisterProvider(provider ask.Provider) {
 	if provider == nil {
 		return
@@ -55,57 +54,31 @@ func (p *ChatPlugin) RegisterProvider(provider ask.Provider) {
 	p.providers[provider.Name()] = provider
 }
 
-func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
+func (p *ChatPlugin) Register(_ *kernel.Kernel) ([]*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   "chat",
 		Short: "Start a chat session",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			req := ask.AskRequest{
-				Provider:        ask.FirstNonEmpty(viper.GetString("chat.provider"), viper.GetString("provider")),
-				Host:            ask.FirstNonEmpty(viper.GetString("chat.host"), viper.GetString("host")),
-				Port:            ask.FirstNonZero(viper.GetInt("chat.port"), viper.GetInt("port")),
-				Model:           ask.FirstNonEmpty(viper.GetString("chat.model"), viper.GetString("model")),
-				Timeout:         time.Duration(ask.FirstNonZero(viper.GetInt("chat.timeout_seconds"), viper.GetInt("timeout_seconds"))) * time.Second,
-				SystemPrompt:    "",
-				Pull:            false,
-				ProgressOut:     cmd.ErrOrStderr(),
-				ProgressClearer: &shared.ProgressClearer{},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			model, _ := cmd.Flags().GetString("model")
+			req, err := ask.Endpoint{
+				Plugin: "chat", Model: model, Provider: providerFlag(cmd),
+			}.Resolve()
+			if err != nil {
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
-			if req.Timeout == 0 {
-				req.Timeout = 120 * time.Second
-			}
-			if strings.TrimSpace(req.Provider) == "" {
-				req.Provider = ask.ResolveProviderFromModel(req.Model)
-			}
-			if err := validateChatConfig(req); err != nil {
-				return shared.PrintError(cmd.ErrOrStderr(), err.Error())
-			}
-
-			provider, ok := p.providers[req.Provider]
-			if !ok {
-				if fallback, hasFallback := p.providers["ollama"]; hasFallback {
-					provider = fallback
-				} else {
-					return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Unknown provider %q", req.Provider))
-				}
+			req.ProgressOut = cmd.ErrOrStderr()
+			req.ProgressClearer = &shared.ProgressClearer{}
+			provider, err := ask.ProviderFor(p.providers, req.Provider)
+			if err != nil {
+				return shared.Fail(cmd.ErrOrStderr(), err.Error())
 			}
 
 			_ = shared.PrintBox(cmd.OutOrStdout(), "Chat", "Starting chat session. Type 'exit' to end.")
 			reader := bufio.NewReader(cmd.InOrStdin())
-			history := []ask.ChatMessage{}
 			sessionID := time.Now().UTC().Format("20060102T150405.000000000Z")
 			assistantTurns := 0
-			noCache, _ := cmd.Flags().GetBool("no-cache")
-			refreshCache, _ := cmd.Flags().GetBool("refresh-cache")
-			if !cmd.Flags().Lookup("refresh-cache").Changed {
-				refreshCache = viper.GetBool("cache.refresh")
-			}
-			if noCache {
-				refreshCache = false
-			}
-			canRead := cache.Enabled() && !noCache && !refreshCache
-			canWrite := cache.Enabled() && !noCache
-			baseRole := strings.TrimSpace(viper.GetString("chat.role"))
+			exchange := ask.NewExchange(cmd, "chat")
+			state := &session{role: strings.TrimSpace(viper.GetString("chat.role"))}
 			if pull, _ := cmd.Flags().GetBool("pull"); pull {
 				req.Pull = true
 			}
@@ -114,23 +87,26 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 				_ = shared.PrintPrompt(cmd.OutOrStdout(), "You: ")
 				line, err := reader.ReadString('\n')
 				if err != nil {
-					if err == io.EOF {
+					if errors.Is(err, io.EOF) {
 						_ = shared.PrintBox(cmd.OutOrStdout(), "Chat", "Chat session ended (EOF).")
 						return nil
 					}
-					return shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Error reading input: %v", err))
+					return shared.Fail(cmd.ErrOrStderr(), fmt.Sprintf("Error reading input: %v", err))
 				}
 				line = strings.TrimSpace(line)
 				if line == "" {
 					continue
 				}
-				if strings.EqualFold(line, "exit") {
-					_ = shared.PrintBox(cmd.OutOrStdout(), "Chat", "Chat session ended.")
-					return nil
+				if done := state.run(line); done.handled {
+					_ = shared.PrintBox(cmd.OutOrStdout(), "Chat", done.reply)
+					if done.quit {
+						return nil
+					}
+					continue
 				}
 
-				history = append(history, ask.ChatMessage{Role: "user", Content: line})
-				req.Messages = history
+				state.history = append(state.history, ask.ChatMessage{Role: "user", Content: line})
+				req.Messages = state.history
 				req.SystemPrompt = ""
 				if ctxPrompt, err := mempalace.SearchContextIfEnabled(cmd.Context(), line); err != nil {
 					_ = shared.PrintError(cmd.ErrOrStderr(), err.Error())
@@ -138,40 +114,12 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 				} else if ctxPrompt != "" {
 					req.SystemPrompt = ctxPrompt
 				} else {
-					roleName := baseRole
-					if roleName == "" && viper.GetBool("roles.auto_select") {
-						kw := roles.LoadKeywordConfig()
-						weight := viper.GetFloat64("roles.scoring.weight")
-						if weight == 0 {
-							weight = 1.0
-						}
-						threshold := viper.GetFloat64("roles.scoring.min_threshold")
-						defaultRole := viper.GetString("roles.default_role")
-						res := roles.SelectRoleForText(line, kw, weight, threshold, defaultRole)
-						roleName = res.RoleName
-						if viper.GetBool("roles.debug") {
-							roles.SetDebugWriter(cmd.ErrOrStderr())
-							roles.LogScores(res.AllScores, res.Threshold, res.RoleName)
-						}
+					prompt, err := ask.RolePromptFor(cmd, state.role, line, req)
+					if err != nil {
+						_ = shared.PrintError(cmd.ErrOrStderr(), err.Error())
+						continue
 					}
-					if roleName != "" {
-						rolesList, err := roles.LoadRolesWithDefaults()
-						if err != nil {
-							_ = shared.PrintError(cmd.ErrOrStderr(), err.Error())
-							continue
-						}
-						resolved, err := roles.ResolveInheritance(rolesList)
-						if err != nil {
-							_ = shared.PrintError(cmd.ErrOrStderr(), err.Error())
-							continue
-						}
-						role, ok := resolved[roleName]
-						if !ok {
-							_ = shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("role %q not found", roleName))
-							continue
-						}
-						req.SystemPrompt = roles.ResolveSystemPrompt(role, req.Provider, req.Model)
-					}
+					req.SystemPrompt = prompt
 				}
 				if memCtx, err := mempalace.InjectIfEnabled(cmd.Context(), line); err != nil {
 					_ = shared.PrintError(cmd.ErrOrStderr(), err.Error())
@@ -180,58 +128,15 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 					req.SystemPrompt = mempalace.AppendMemory(req.SystemPrompt, memCtx)
 				}
 
-				cacheKey := ""
-				if canWrite {
-					label := ask.BuildLabel("chat", line)
-					keyPayload := cache.KeyPayload{
-						PluginID: "chat",
-						Provider: provider.Name(),
-						Host:     req.Host,
-						Port:     req.Port,
-						Model:    req.Model,
-						Messages: toCacheMessages(history),
-						Label:    label,
-					}
-					key, err := cache.BuildKey(keyPayload)
-					if err == nil {
-						cacheKey = key
-						if canRead {
-							if entry, ok, err := cache.Get(cacheKey); err == nil && ok {
-								history = append(history, ask.ChatMessage{Role: "assistant", Content: entry.Response})
-								assistantTurns++
-								if err := mempalace.PersistChatTurn(cmd.Context(), sessionID, assistantTurns, line, entry.Response); err != nil && viper.GetBool("debug") {
-									_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace persist failed: %v\n", err))
-								}
-								_ = shared.PrintBox(cmd.OutOrStdout(), "Assistant", entry.Response)
-								continue
-							}
-						}
-					}
+				if answered, ok := exchange.Lookup(line, req, provider.Name(), ask.ToCacheMessages(state.history)); ok {
+					state.history = append(state.history, ask.ChatMessage{Role: "assistant", Content: answered})
+					assistantTurns++
+					rememberTurn(cmd, sessionID, assistantTurns, line, answered)
+					_ = shared.PrintBox(cmd.OutOrStdout(), "Assistant", answered)
+					continue
 				}
 
-				sreq := ask.ApplySanitize(cmd.ErrOrStderr(), req)
-				finalText, err := shared.DisplayStreamedAnswer(cmd.Context(), cmd.OutOrStdout(), "Assistant", func(send func(string)) (string, error) {
-					var streamed strings.Builder
-					cleared := false
-					resp, streamErr := provider.SendStream(cmd.Context(), sreq, func(chunk string) {
-						if strings.TrimSpace(chunk) == "" {
-							return
-						}
-						if !cleared {
-							sreq.ProgressClearer.ClearOnce(cmd.ErrOrStderr())
-							cleared = true
-						}
-						send(chunk)
-						streamed.WriteString(chunk)
-					})
-					if streamErr != nil {
-						return "", streamErr
-					}
-					if resp.Text == "" {
-						resp.Text = streamed.String()
-					}
-					return resp.Text, nil
-				})
+				finalText, err := ask.StreamAnswer(cmd, "Assistant", provider, ask.ApplySanitize(cmd.ErrOrStderr(), req))
 				if err != nil {
 					_ = shared.PrintError(cmd.ErrOrStderr(), fmt.Sprintf("Ask failed: %v", err))
 					continue
@@ -240,84 +145,34 @@ func (p *ChatPlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 					_ = shared.PrintError(cmd.ErrOrStderr(), "Ask returned an empty response")
 					continue
 				}
-				history = append(history, ask.ChatMessage{Role: "assistant", Content: finalText})
+				state.history = append(state.history, ask.ChatMessage{Role: "assistant", Content: finalText})
 				assistantTurns++
-				if err := mempalace.PersistChatTurn(cmd.Context(), sessionID, assistantTurns, line, finalText); err != nil && viper.GetBool("debug") {
-					_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace persist failed: %v\n", err))
-				}
-				if err := mempalace.DiaryWriteIfEnabled(cmd.Context(), line, finalText); err != nil && viper.GetBool("debug") {
-					_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace diary write failed: %v\n", err))
-				}
-				if canWrite && cacheKey != "" {
-					_ = cache.Set(cache.Entry{
-						Key:       cacheKey,
-						Label:     ask.BuildLabel("chat", line),
-						PluginID:  "chat",
-						Provider:  provider.Name(),
-						Host:      req.Host,
-						Port:      req.Port,
-						Model:     req.Model,
-						Messages:  toCacheMessages(history),
-						Response:  finalText,
-						CreatedAt: time.Now().UTC(),
-					})
-				}
+				rememberTurn(cmd, sessionID, assistantTurns, line, finalText)
+				exchange.Store(finalText)
 			}
 		},
 	}
 
-	cmd.Flags().String("host", "", "Provider host (overrides chat.host)")
-	cmd.Flags().Int("port", 0, "Provider port (overrides chat.port)")
-	cmd.Flags().String("model", "", "Model name (overrides chat.model)")
-	cmd.Flags().Int("timeout", 0, "Request timeout in seconds (overrides chat.timeout_seconds)")
-	cmd.Flags().Bool("no-cache", false, "Disable cache for this session")
-	cmd.Flags().Bool("refresh-cache", false, "Refresh cache for this session")
-	cmd.Flags().String("role", "", "Role name to apply to the session")
-	cmd.Flags().Bool("pull", false, "Pull model from Ollama if available (force refresh)")
-
-	_ = viper.BindPFlag("chat.host", cmd.Flags().Lookup("host"))
-	_ = viper.BindPFlag("chat.port", cmd.Flags().Lookup("port"))
-	_ = viper.BindPFlag("chat.model", cmd.Flags().Lookup("model"))
-	_ = viper.BindPFlag("chat.timeout_seconds", cmd.Flags().Lookup("timeout"))
-	_ = viper.BindPFlag("cache.refresh", cmd.Flags().Lookup("refresh-cache"))
-	_ = viper.BindPFlag("chat.role", cmd.Flags().Lookup("role"))
+	ask.AddEndpointFlags(cmd, "chat", "session")
 
 	return []*cobra.Command{cmd}, nil
 }
 
-func validateChatConfig(req ask.AskRequest) error {
-	missing := []string{}
-	if strings.TrimSpace(req.Provider) == "" {
-		missing = append(missing, "chat.provider")
+// providerFlag prefers what was typed, so one session can go elsewhere.
+func providerFlag(cmd *cobra.Command) string {
+	value, err := cmd.Flags().GetString("provider")
+	if err != nil {
+		return ""
 	}
-	if strings.TrimSpace(req.Host) == "" {
-		missing = append(missing, "host")
-	}
-	if req.Port == 0 {
-		missing = append(missing, "port")
-	}
-	if strings.TrimSpace(req.Model) == "" {
-		missing = append(missing, "model")
-	}
-	if req.Timeout == 0 {
-		missing = append(missing, "timeout_seconds")
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("missing chat configuration: %s", strings.Join(missing, ", "))
-	}
-	return nil
+	return value
 }
 
-func toCacheMessages(history []ask.ChatMessage) []cache.Message {
-	out := make([]cache.Message, 0, len(history))
-	for _, msg := range history {
-		if strings.TrimSpace(msg.Role) == "" || strings.TrimSpace(msg.Content) == "" {
-			continue
-		}
-		out = append(out, cache.Message{
-			Role:    msg.Role,
-			Content: msg.Content,
-		})
+// rememberTurn records one exchange, and says nothing unless asked to.
+func rememberTurn(cmd *cobra.Command, sessionID string, turn int, question, answer string) {
+	if err := mempalace.PersistChatTurn(cmd.Context(), sessionID, turn, question, answer); err != nil && viper.GetBool("debug") {
+		_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace persist failed: %v\n", err))
 	}
-	return out
+	if err := mempalace.DiaryWriteIfEnabled(cmd.Context(), question, answer); err != nil && viper.GetBool("debug") {
+		_ = shared.PrintRaw(cmd.ErrOrStderr(), fmt.Sprintf("[DEBUG] mempalace diary write failed: %v\n", err))
+	}
 }
