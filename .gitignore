@@ -23,3 +23,6 @@ gaia
 
 # Local configuration file
 .gaia.yaml
+
+# Build output of `make build`
+bin/

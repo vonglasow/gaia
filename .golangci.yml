@@ -1,0 +1,63 @@
+# The `standard` set CI already ran, plus depguard, which enforces the layering.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    # Named rules only, below: the `exported` default would ask for a comment on
+    # every ID() and DependsOn(), which is noise the interface already documents.
+    - revive
+    # Comments end with a period, so a truncated sentence is visible.
+    - godot
+    # errors.Is over ==, and %w over %v, so a sentinel stays one.
+    - errorlint
+    - depguard
+
+  # A test file does not document the package it tests, and revive picks the
+  # first file alphabetically — in kernel/ that is commands_test.go.
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [revive]
+        text: package-comments
+
+  settings:
+    revive:
+      rules:
+        # A parameter named and unused reads as something the function forgot.
+        - name: unused-parameter
+        # Shadowing max or real makes the builtin unavailable further down.
+        - name: redefines-builtin-id
+        # One line saying what a package is for, at its entry point.
+        - name: package-comments
+
+    depguard:
+      rules:
+        # registry.go is the single place aware of the concrete list of plugins.
+        kernel-knows-no-plugin:
+          files:
+            - "**/kernel/**"
+          deny:
+            - pkg: "gaia/plugins"
+              desc: "the kernel manages the Plugin interface, never a concrete plugin — register it in plugins/registry.go instead"
+
+        # A leaf that imports back into the tree makes every dependent a cycle.
+        shared-is-a-leaf:
+          files:
+            - "**/plugins/shared/**"
+          deny:
+            - pkg: "gaia/kernel"
+              desc: "plugins/shared is a leaf every plugin depends on; importing the kernel from it creates a cycle"
+            - pkg: "gaia/config"
+              desc: "plugins/shared is a leaf every plugin depends on; it must not know how config is loaded"
+            - pkg: "gaia/plugins"
+              desc: "plugins/shared is a leaf every plugin depends on; it must not know a plugin"
+
+        # kernel -> config is the real edge; a second one back makes boot order luck.
+        config-precedes-the-kernel:
+          files:
+            - "**/config/**"
+            - "!**/plugins/config/**"
+          deny:
+            - pkg: "gaia/kernel"
+              desc: "config is loaded before the kernel resolves plugins; it cannot depend on the kernel"
