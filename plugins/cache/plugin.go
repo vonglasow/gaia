@@ -12,13 +12,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type CachePlugin struct{}
+type CachePlugin struct {
+	kernel.BasePlugin
+}
 
 func NewCachePlugin() *CachePlugin { return &CachePlugin{} }
 
 func (p *CachePlugin) ID() string           { return "cache" }
 func (p *CachePlugin) DefaultEnabled() bool { return true }
-func (p *CachePlugin) DependsOn() []string  { return nil }
 func (p *CachePlugin) ConfigSchema() []string {
 	return []string{
 		"cache.enabled",
@@ -27,9 +28,7 @@ func (p *CachePlugin) ConfigSchema() []string {
 	}
 }
 
-func (p *CachePlugin) MCPTools() []kernel.MCPTool { return nil }
-
-func (p *CachePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
+func (p *CachePlugin) Register(_ *kernel.Kernel) ([]*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:   "cache",
 		Short: "Manage cache entries",
@@ -38,7 +37,7 @@ func (p *CachePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List cached entries",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			entries, err := List()
 			if err != nil {
 				return err
@@ -51,14 +50,14 @@ func (p *CachePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 			})
 			var b strings.Builder
 			for _, entry := range entries {
-				b.WriteString(fmt.Sprintf("%s\t%s\t%s\t%s\n",
+				fmt.Fprintf(&b, "%s\t%s\t%s\t%s\n",
 					entry.Key,
 					entry.PluginID,
 					entry.Model,
 					entry.CreatedAt.Format(time.RFC3339),
-				))
+				)
 				if entry.Label != "" {
-					b.WriteString(fmt.Sprintf("  %s\n", entry.Label))
+					fmt.Fprintf(&b, "  %s\n", entry.Label)
 				}
 			}
 			return shared.PrintBox(cmd.OutOrStdout(), "Cache", strings.TrimRight(b.String(), "\n"))
@@ -75,7 +74,7 @@ func (p *CachePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 				return err
 			}
 			if !ok {
-				return shared.PrintError(cmd.ErrOrStderr(), "Cache entry not found")
+				return shared.Fail(cmd.ErrOrStderr(), "Cache entry not found")
 			}
 			body := fmt.Sprintf("Key: %s\nPlugin: %s\nModel: %s\nCreated: %s\nLabel: %s\n\nResponse:\n%s",
 				entry.Key,
@@ -92,7 +91,7 @@ func (p *CachePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	statsCmd := &cobra.Command{
 		Use:   "stats",
 		Short: "Show cache statistics",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			stats, err := StatsInfo()
 			if err != nil {
 				return err
@@ -105,7 +104,7 @@ func (p *CachePlugin) Register(k *kernel.Kernel) ([]*cobra.Command, error) {
 	clearCmd := &cobra.Command{
 		Use:   "clear",
 		Short: "Clear all cache entries",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			removed, err := ClearAll()
 			if err != nil {
 				return err

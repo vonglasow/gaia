@@ -1,3 +1,4 @@
+// Package roles loads system prompts from YAML and picks one for a question.
 package roles
 
 import (

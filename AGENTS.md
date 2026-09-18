@@ -1,254 +1,68 @@
 # AGENTS.md
 
-Agent guide for the **gaia** repository.
+How to work on **gaia**. This file is read by agents working on this repository,
+including gaia's own — `gaia agent` quotes the first part of it into the model's
+prompt, so what matters is at the top and the whole thing stays short.
 
-**Purpose**: Enable agents to work effectively in this Go-based CLI project while honoring repo conventions, CI expectations, and user preferences.
-**When to read**: At task initialization, before major decisions, and whenever requirements shift.
-**Concurrency reality**: Assume other contributors may land commits mid-run; refresh context (`git status`, `git diff`, CI config) before summarizing or editing.
-
----
-
-## Purpose & Scope
-
-- **Goal:** Keep the Go CLI clean, reproducible, and aligned with the repo’s automation (pre-commit, golangci-lint, CI).
-- **Scope:** Applies to everything in this repo unless a deeper `AGENTS.md` overrides it.
-- **Safety:** Avoid destructive or risky operations by default (e.g., publishing releases, pushing tags, modifying release secrets).
-
----
-
-## Quick Obligations
-
-| Situation               | Required action                                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Starting a task         | Read this guide end-to-end, then check fresh user/system instructions and CI workflow (`.github/workflows/ci.yml`). |
-| Before committing       | Run `pre-commit run -a` and fix all failures (unless explicitly told otherwise).                                    |
-| Go changes              | Keep code idiomatic, run `go test -v ./...`, and avoid introducing unnecessary dependencies.                        |
-| Linting                 | Ensure `golangci-lint` + pre-commit rules pass (CI runs both).                                                      |
-| Release-related changes | Do **not** trigger releases, tag pushes, or modify secrets-related config unless explicitly requested.              |
-| Long commands           | If a command exceeds **5 minutes**, stop it, capture logs/output, and mention the timeout before retrying.          |
-| Dependencies            | Do not add or upgrade dependencies without confirming fit, maintenance, and security posture.                       |
-| Final handoff           | Summarize changes by file, mention checks run, note uncertainties/TODOs.                                            |
-| Update README.md        | Update the README.md by adding new informations about the feature                                                   |
-
-
----
-
-## Repo Overview (High Confidence)
-
-This is a Go CLI project with a kernel + plugin architecture (from the repo root):
-
-- `.github/` — GitHub Actions workflows (CI + release automation)
-- `kernel/` — Plugin lifecycle: registration, dependency resolution, config validation
-- `config/` — Configuration loading and schema management (Viper-based)
-- `plugins/` — All feature plugins (each implements the `kernel.Plugin` interface):
-  - `ask/` — One-shot LLM queries; providers: Ollama, OpenAI, Mistral. Exports `ApplySanitize`.
-  - `chat/` — Interactive chat session (disabled by default)
-  - `investigate/` — Agentic operator loop (planner + executor + safety)
-  - `mempalace/` — MemPalace MCP client; context injection and persistence
-  - `roles/` — Role management and auto-selection. Exports `LoadRolesWithDefaults`, `LoadKeywordConfig`.
-  - `sanitize/` — Standalone sanitize plugin
-  - `cache/` — Response caching
-  - `config/` — `gaia config` CLI commands
-  - `shared/` — Shared UI helpers (TUI, boxes, progress)
-  - `tools/` — Operator tools
-  - `version/` — Version command
-- `main.go` — Entry point: kernel → RegisterAll → Execute
-- `.pre-commit-config.yaml` — Formatting/lint automation
-- `.goreleaser.yaml` — Release packaging config
-- `README.md` — Documentation
-- `go.mod` / `go.sum` — Go modules
-- `_staging/` — Work-in-progress exploratory code; not compiled into the binary
-
-(If new directories appear, do not assume they are wired into CI without checking.)
-
----
-
-## Source of Truth: CI + pre-commit
-
-### CI expectations
-
-The CI workflow runs on push + PR and enforces:
-
-- Go version: **1.26** (matrix)
-- `golangci-lint` via GitHub Action (version from `.golangci-lint-version`; align locally for consistent results)
-- `govulncheck` (vulnerability scan of Go deps)
-- `pre-commit-ci/lite-action`
-- tests: `go test -v ./...`
-- release job only on `main`, using semantic-release + goreleaser (requires token)
-
-### pre-commit expectations
-
-Formatting and other checks are defined in `.pre-commit-config.yaml`.
-
-Default command:
+## Checks
 
 ```bash
-pre-commit run -a
+make check   # what a commit must pass: tested-check, lint, cover-check
+make test    # the whole suite
+make build   # into ./bin, stamped with version and commit
 ```
 
-Do not invent alternative linters/formatters unless the user asks.
+`pre-commit run -a` runs those plus gofmt, goimports, semgrep and govulncheck. It is
+what CI runs; there is no second set of rules.
 
----
+A change is done when `make check` passes. A test you did not run is not a test that
+passed.
 
-## Non-Negotiable Safety Rules
+## Where things live
 
-### Forbidden by default (unless explicitly granted)
+- `kernel/` — bootstraps the app, resolves which plugins are on, registers commands.
+  It knows the `Plugin` interface and no plugin by name; `depguard` enforces that.
+- `plugins/<name>/` — one directory per feature. Each implements `kernel.Plugin`.
+- `plugins/shared/` — helpers every plugin may use. A leaf: it imports nothing from
+  `gaia/`, so that depending on it can never make a cycle.
+- `plugins/shared/execpolicy/` — decides whether a command a model proposed may run,
+  and runs it without a shell.
+- `config/` — loading, validation, and the per-repository trust store. Loaded before
+  the kernel resolves anything, so it does not depend on the kernel.
+- `roles/` — system prompts as YAML.
+- `bdd/` — acceptance scenarios in Gherkin, driving the real CLI in-process.
 
-- Triggering releases (manual tag pushes, running goreleaser publish flows)
-- Modifying secrets, tokens, or release permissions in CI
-- Introducing remote calls that may exfiltrate data (especially from config files)
-- Adding telemetry, analytics, or network reporting without explicit consent
+## Conventions
 
-### Allowed by default
+- Idiomatic Go, small functions, explicit errors wrapped with context.
+- Config keys are namespaced by plugin (`ask.model`) and declared in that plugin's
+  `ConfigSchema()`. An undeclared key is refused, so declaring it is not optional.
+- A command that fails prints its reason with `shared.Fail` and returns the error, so
+  the shell sees a non-zero exit. Never `PrintError` as a return value.
+- Commands never go through a shell. Use `execpolicy`.
+- Every package has a test file — `tested-check` fails the commit otherwise.
+- Coverage floors are in the `Makefile`. Raise them deliberately; never lower one to
+  get a commit through.
 
-- Local builds and tests
-- Linting and formatting via pre-commit / golangci-lint
-- Refactoring, bug fixes, and feature work that stays within the CLI scope
+## Adding a plugin
 
----
+1. `plugins/<name>/plugin.go` implementing `ID`, `DefaultEnabled`, `DependsOn`,
+   `ConfigSchema`, `Register`, `MCPTools`.
+2. Prefix every config key with the plugin ID.
+3. Register it in `plugins/registry.go`.
+4. Write the test file.
 
-## Development Workflow
+Tools returned by `MCPTools()` are served by `gaia serve` for enabled plugins only.
 
-### Standard dev commands (use these by default)
+## Not without being asked
 
-```bash
-# Run all repo checks (recommended)
-pre-commit run -a
+- Releasing: tags, `goreleaser`, anything touching `GH_TOKEN` or the release job.
+- Adding a dependency. Say why, and what else was considered.
+- Widening what `execpolicy` allows, or what the agent may write.
+- Broadening CI permissions.
 
-# Run tests (CI does this)
-go test -v ./...
+## Handing off
 
-# Local build
-go build ./...
-
-# check help
-go run main.go --help
-
-# display current config to use when you modify main.go or config folder before and after modification
-go run main.go config list
-```
-
-### Linting
-
-CI runs `golangci-lint`. Prefer to run it locally if available:
-
-```bash
-golangci-lint run ./...
-```
-
-But if golangci-lint is not installed locally, rely on `pre-commit run -a` and keep changes small.
-
-### Formatting
-
-Prefer Go’s built-in formatting conventions:
-
-```bash
-gofmt -w .
-```
-
-However, if pre-commit provides formatting hooks, **let pre-commit be the final arbiter**.
-
-### Documentation
-
-- Update only `README.md` if user-facing behavior changes or new features are added.
-
----
-
-## Coding Style (Go)
-
-- Prefer clear, minimal, idiomatic Go.
-- Avoid clever abstractions, especially in CLI wiring.
-- Keep error handling explicit and meaningful (wrap errors with context).
-- Avoid global state unless unavoidable; pass config/context explicitly.
-- Prefer small functions with obvious responsibilities.
-- Keep `commands/` focused on CLI wiring; core logic should live in the appropriate package (often `api/` or `config/`).
-
-### Dependency philosophy
-
-- Don’t add dependencies casually.
-- Prefer well-maintained packages, widely adopted in Go ecosystem.
-- Confirm with the user before adding a new dependency.
-
----
-
-## Configuration & UX Expectations
-
-From README-level behavior:
-
-- Config lives in `~/.config/gaia/config.yaml` by default.
-- CLI supports multiple roles/modes (`default`, `describe`, `shell`, `code`) and subcommands (`ask`, `chat`, `config`, etc.).
-
-When modifying config behavior:
-
-- Preserve backwards compatibility if possible.
-- Avoid breaking existing YAML fields; if changes are needed, add migration or fallback behavior.
-- Keep default values stable unless explicitly requested.
-
----
-
-## GitHub Actions / Release Automation
-
-This repo uses:
-
-- semantic-release action (Go semantic release) + goreleaser hooks for releases
-- release only on `main` and requires a token (`secrets.GH_TOKEN`)
-
-When touching `.github/workflows/ci.yml` or `.goreleaser.yaml`:
-
-- Be extra conservative.
-- Avoid changing permissions scope or secrets usage.
-- Don’t broaden release triggers.
-- If you must change anything, explain the risk clearly in the handoff.
-
----
-
-## Git Hygiene
-
-- Keep commits focused and descriptive.
-- Don’t rewrite others’ history.
-- If a large formatting change is required because of tooling, call it out explicitly.
-
----
-
-## Communication Preferences
-
-- Be concise and direct.
-- Humor is optional, keep it dry if used.
-- When unsure, say so and propose options.
-
----
-
-## Final Handoff Checklist
-
-Before finishing:
-
-1. Confirm what checks were run:
-   - At minimum: `pre-commit run -a`
-   - If Go code changed: `go test -v ./...`
-2. Summarize changes by file (and ideally key sections).
-3. Call out TODOs / risks / uncertainties.
-4. Confirm that no release triggers or secrets changes were performed.
-
----
-
-## Suggested “Safe Defaults” for Typical Tasks
-
-### Bug fix / small feature
-
-1. Implement change with minimal surface area.
-2. `pre-commit run -a`
-3. `go test -v ./...`
-4. Hand off with file-level summary.
-
-### Adding a command
-
-1. Add command wiring under `commands/`.
-2. Put logic in `api/` / `config/` (avoid bloating the command handler).
-3. Update README usage if user-facing behavior changes.
-4. Run checks.
-
-### Refactor
-
-1. Keep the diff reviewable.
-2. Avoid renaming public flags/subcommands unless requested.
-3. Ensure tests still pass and CLI behavior remains consistent.
+Say which checks you ran and what they said. Summarise by file. Name what you could
+not verify — an answer that says what it is unsure of is worth more than one that
+sounds certain.
